@@ -40,13 +40,11 @@ def keep_alive():
     t.start()
 
 # ================= কনফিগারেশন =================
-# ভালো প্র্যাকটিস হলো টোকেন Render এর Environment Variables এ রাখা, তবে আপনার দেওয়া টোকেনটি এখানে দেওয়া হলো:
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8511299158:AAE-K85otUuXQiRttkd9lgC1ODtsJg6lBMs")
 ADMIN_ID = 7406442919  
 REQUIRED_CHANNEL_ID = "-1001481593780"
 
 LINK_REGISTRATION = "https://bit.ly/BLACK220" 
-PROMO_CODE = "BLACK220" 
 
 CHANNEL_INVITE_LINK = "https://t.me/+3U0nMzWs4Aw0YjFl"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
@@ -121,14 +119,14 @@ def save_user(user_id):
         with open(USER_FILE, "a") as f: f.write(f"{str(user_id)}\n")
 
 def get_users():
-    if not os.path.exists(USER_FILE): return []
+    if not os.path.exists(USER_FILE): return[]
     with open(USER_FILE, "r") as f: return f.read().splitlines()
 
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
         member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID, user_id=user_id)
-        return member.status in ['creator', 'administrator', 'member']
+        return member.status in['creator', 'administrator', 'member']
     except BadRequest:
         return False
     except Exception as e:
@@ -170,9 +168,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     save_user(user.id)
     if not await check_membership(update, context):
-        keyboard = [
-            [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_INVITE_LINK)],
-            [InlineKeyboardButton("✅ I Have Joined", callback_data='check_join_status')]
+        keyboard = [[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_INVITE_LINK)],[InlineKeyboardButton("✅ I Have Joined", callback_data='check_join_status')]
         ]
         welcome_text = f"👋 <b>Hello {user.first_name}!</b>\nJoin our channel to use this bot."
         try:
@@ -200,8 +196,7 @@ async def check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return CHECK_JOIN
 
 async def show_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🇺🇸 English", callback_data='lang_en'),
+    keyboard =[[InlineKeyboardButton("🇺🇸 English", callback_data='lang_en'),
          InlineKeyboardButton("🇧🇩 বাংলা", callback_data='lang_bn')]
     ]
     text = "🌐 <b>Select Language / ভাষা নির্বাচন করুন:</b>"
@@ -225,8 +220,7 @@ async def show_platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
-    keyboard = [
-        [InlineKeyboardButton("🔵 1XBET", callback_data='platform_1xbet'),
+    keyboard = [[InlineKeyboardButton("🔵 1XBET", callback_data='platform_1xbet'),
          InlineKeyboardButton("🟡 MELBET", callback_data='platform_melbet')],
         [InlineKeyboardButton(t['btn_help'], url=ADMIN_USER_LINK)]
     ]
@@ -242,8 +236,21 @@ async def platform_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choice = query.data
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
-    p_name = "1XBET" if choice == 'platform_1xbet' else "MELBET"
-    text = f"{t['reg_title'].format(platform=p_name)}\n\n{t['reg_msg'].format(promo=PROMO_CODE)}"
+    
+    # 🎯 1XBET এবং MELBET এর জন্য আলাদা প্রোমো কোড লজিক সেট করা হলো
+    if choice == 'platform_1xbet':
+        p_name = "1XBET"
+        promo_code = "BLACK696"
+    else:
+        p_name = "MELBET"
+        promo_code = "BLACK220"
+        
+    # পরবর্তী ধাপের জন্য প্রোমো কোড সেভ করে রাখা হচ্ছে 
+    context.user_data['platform_name'] = p_name
+    context.user_data['promo_code'] = promo_code
+
+    text = f"{t['reg_title'].format(platform=p_name)}\n\n{t['reg_msg'].format(promo=promo_code)}"
+    
     keyboard = [
         [InlineKeyboardButton(t['btn_reg_link'].format(platform=p_name), url=LINK_REGISTRATION)],
         [InlineKeyboardButton(t['btn_next'], callback_data='account_created')],
@@ -273,19 +280,24 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.message.text.strip()
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
+    
+    # যে প্ল্যাটফর্ম সিলেক্ট করা হয়েছিল তার প্রোমো কোড এখানে আনা হচ্ছে
+    promo_code = context.user_data.get('promo_code', 'BLACK220')
+    
     if not uid.isdigit(): 
         await update.message.reply_text(t['error_digit'], parse_mode='HTML')
         return WAITING_FOR_ID
     if len(uid) < 9 or len(uid) > 10: 
         await update.message.reply_text(t['error_length'], parse_mode='HTML')
         return WAITING_FOR_ID
+        
     keyboard = [
         [InlineKeyboardButton(t['btn_open_hack'], web_app=WebAppInfo(url=WEBAPP_URL))],
         [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]
     ]
     await safe_send_photo(
         context, chat_id=update.effective_chat.id, photo=FINAL_IMAGE_URL,
-        caption=t['success_caption'].format(uid=uid, promo=PROMO_CODE),
+        caption=t['success_caption'].format(uid=uid, promo=promo_code),
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return ConversationHandler.END
@@ -293,12 +305,7 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= অ্যাডমিন হ্যান্ডলার =================
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
-    keyboard = [
-        [InlineKeyboardButton("📸 Photo + Text", callback_data='mode_photo_text')],
-        [InlineKeyboardButton("🎥 Video + Text + Btn", callback_data='mode_video_text_btn')],
-        [InlineKeyboardButton("🎥 Video + Btn", callback_data='mode_video_btn')],
-        [InlineKeyboardButton("📝 Text + Btn", callback_data='mode_text_btn')],
-        [InlineKeyboardButton("❌ Cancel", callback_data='admin_cancel')]
+    keyboard = [[InlineKeyboardButton("📸 Photo + Text", callback_data='mode_photo_text')],[InlineKeyboardButton("🎥 Video + Text + Btn", callback_data='mode_video_text_btn')],[InlineKeyboardButton("🎥 Video + Btn", callback_data='mode_video_btn')],[InlineKeyboardButton("📝 Text + Btn", callback_data='mode_text_btn')],[InlineKeyboardButton("❌ Cancel", callback_data='admin_cancel')]
     ]
     await update.message.reply_text("👑 <b>ADMIN PANEL</b>", parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
     return ADMIN_MENU
@@ -342,8 +349,7 @@ async def admin_get_btn_name(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return await admin_broadcast_confirm(update, context)
 
 async def admin_broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🚀 SEND", callback_data='confirm_send'),
+    keyboard = [[InlineKeyboardButton("🚀 SEND", callback_data='confirm_send'),
          InlineKeyboardButton("❌ CANCEL", callback_data='confirm_cancel')]
     ]
     await update.message.reply_text("✅ Confirm Send?", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -365,7 +371,7 @@ async def admin_perform_broadcast(update: Update, context: ContextTypes.DEFAULT_
     for uid in users:
         try:
             if 'photo' in mode:
-                await context.bot.send_photo(uid, photo=context.user_data['file_id'], caption=context.user_data.get('caption'), parse_mode='HTML')
+                await context.bot.send_photo(uid, photo=context.user_data['file_id'], caption=context.user_data.get('caption'), parse_mode='HTML', reply_markup=markup)
             elif 'video' in mode:
                 await context.bot.send_video(uid, video=context.user_data['file_id'], caption=context.user_data.get('caption'), reply_markup=markup, parse_mode='HTML')
             elif 'text' in mode:
@@ -397,15 +403,16 @@ if __name__ == '__main__':
     user_conv = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            CHECK_JOIN: [CallbackQueryHandler(check_join_callback, pattern='^check_join_status$')],
-            SELECT_LANGUAGE: [CallbackQueryHandler(set_language, pattern='^lang_')],
-            CHOOSE_PLATFORM: [
+            CHECK_JOIN:[CallbackQueryHandler(check_join_callback, pattern='^check_join_status$')],
+            SELECT_LANGUAGE:[CallbackQueryHandler(set_language, pattern='^lang_')],
+            CHOOSE_PLATFORM:[
                 CallbackQueryHandler(platform_choice, pattern='^platform_'),
                 CallbackQueryHandler(wait_and_ask_id, pattern='^account_created$')
             ],
-            WAITING_FOR_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_id)],
+            WAITING_FOR_ID:[MessageHandler(filters.TEXT & ~filters.COMMAND, receive_id)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        # 🎯 এই ফলব্যাকস অপশনের কারণে এখন বট আর ফ্রিজ হবে না, ইউজার যেকোনো সময় /start দিতে পারবে
+        fallbacks=[CommandHandler('start', start), CommandHandler('cancel', cancel)],
         per_message=False
     )
 
@@ -413,13 +420,14 @@ if __name__ == '__main__':
     admin_conv = ConversationHandler(
         entry_points=[CommandHandler('admin', admin_start)],
         states={
-            ADMIN_MENU: [CallbackQueryHandler(admin_mode_select, pattern='^mode_|admin_cancel')],
+            ADMIN_MENU:[CallbackQueryHandler(admin_mode_select, pattern='^mode_|admin_cancel')],
             ADMIN_GET_CONTENT: [MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT, admin_get_content)],
             ADMIN_GET_LINK: [MessageHandler(filters.TEXT, admin_get_link)],
             ADMIN_GET_BTN_NAME: [MessageHandler(filters.TEXT, admin_get_btn_name)],
             ADMIN_CONFIRM: [CallbackQueryHandler(admin_perform_broadcast, pattern='^confirm_')]
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        # 🎯 অ্যাডমিন প্যানেলেও ফলব্যাকস যোগ করা হলো
+        fallbacks=[CommandHandler('start', start), CommandHandler('cancel', cancel)],
         per_message=False
     )
 
