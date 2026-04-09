@@ -11,14 +11,15 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     filters,
-    ConversationHandler
+    ConversationHandler,
+    Defaults
 )
-from telegram.error import BadRequest
+from telegram.constants import ParseMode
 
 # ================= লগিং কনফিগারেশন =================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.ERROR # অপ্রয়োজনীয় লগ কমিয়ে স্পিড বাড়ানো হয়েছে
 )
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ TEXTS = {
         'reg_msg': "⚠️ <b>WARNING:</b> Hack works ONLY with our Link!\n\n1️⃣ Delete old account.\n2️⃣ Click 'Register' (Use promo <code>{promo}</code>).\n3️⃣ Send ID here.\n\n🛑 <i>ID will be rejected if not opened via our link.</i>",
         'btn_reg_link': "🔗 Register {platform}",
         'btn_next': "✅ I Registered (Verify ID)",
-        'wait_msg': "⏳ <b>Connecting to Server...</b>\nChecking ID details...",
+        'wait_msg': "⏳ <b>Connecting to Server...</b>",
         'ask_id': "📩 <b>SEND YOUR ID</b>\nPlease send the 9-10 digit User ID.",
         'error_digit': "❌ <b>Error:</b> Digits only.",
         'error_length': "❌ <b>Invalid ID:</b> Must be 9 or 10 digits.",
@@ -79,7 +80,7 @@ TEXTS = {
         'reg_msg': "⚠️ <b>সতর্কতা:</b> হ্যাকটি শুধুমাত্র আমাদের লিংকে কাজ করবে!\n\n1️⃣ পুরনো একাউন্ট ডিলিট করুন।\n2️⃣ রেজিস্ট্রেশন করুন (প্রোমো: <code>{promo}</code>)।\n3️⃣ আইডি আমাদের পাঠান।\n\n🛑 <i>লিংক ছাড়া আইডি দিলে ভেরিফাই হবে না।</i>",
         'btn_reg_link': "🔗 {platform} রেজিস্ট্রেশন লিংক",
         'btn_next': "✅ রেজিস্ট্রেশন করেছি",
-        'wait_msg': "⏳ <b>সার্ভারে কানেক্ট হচ্ছে...</b>\nআইডি চেক করা হচ্ছে...",
+        'wait_msg': "⏳ <b>সার্ভারে কানেক্ট হচ্ছে...</b>",
         'ask_id': "📩 <b>আপনার আইডি পাঠান</b>\nআপনার ১০ সংখ্যার আইডি টি পাঠান।",
         'error_digit': "❌ <b>ভুল!</b> শুধুমাত্র সংখ্যা পাঠান।",
         'error_length': "❌ <b>ভুল!</b> ৯-১০ সংখ্যার আইডি দিন।",
@@ -89,20 +90,16 @@ TEXTS = {
     }
 }
 
-# ================= STATES =================
+# States
 CHECK_JOIN, SELECT_LANGUAGE, CHOOSE_PLATFORM, WAITING_FOR_ID = range(4)
 ADMIN_MAIN, BC_CONTENT, BC_BUTTON_TEXT, BC_BUTTON_URL, BC_CONFIRM = range(10, 15)
 
-# ================= DATABASE FUNC =================
+# ================= DATABASE =================
 def save_user(user_id):
     if not os.path.exists(USER_FILE): open(USER_FILE, "w").close()
     with open(USER_FILE, "r") as f: users = f.read().splitlines()
     if str(user_id) not in users:
         with open(USER_FILE, "a") as f: f.write(f"{str(user_id)}\n")
-
-def get_users_count():
-    if not os.path.exists(USER_FILE): return 0
-    with open(USER_FILE, "r") as f: return len(f.read().splitlines())
 
 def get_users_list():
     if not os.path.exists(USER_FILE): return []
@@ -118,42 +115,57 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     save_user(user.id)
+    
+    # বাটন ক্লিক রেসপন্স ফাস্ট করার জন্য query answer চেক
+    if update.callback_query:
+        await update.callback_query.answer()
+
     if not await check_membership(update, context):
         keyboard = [[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_INVITE_LINK)],
                     [InlineKeyboardButton("✅ I Have Joined", callback_data='check_join_status')]]
-        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=IMG_START, 
-                                     caption=f"👋 <b>Hello {user.first_name}!</b>\nJoin our channel first.", 
-                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        text = f"👋 <b>Hello {user.first_name}!</b>\nJoin our channel first to use the bot."
+        if update.callback_query:
+            await update.callback_query.message.reply_photo(photo=IMG_START, caption=text, reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await update.message.reply_photo(photo=IMG_START, caption=text, reply_markup=InlineKeyboardMarkup(keyboard))
         return CHECK_JOIN
     
     keyboard = [[InlineKeyboardButton("🇺🇸 English", callback_data='lang_en'),
                  InlineKeyboardButton("🇧🇩 বাংলা", callback_data='lang_bn')]]
-    await context.bot.send_photo(chat_id=update.effective_chat.id, photo=IMG_LANG, 
-                                 caption="🌐 <b>Select Language:</b>", 
-                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    
+    msg_text = "🌐 <b>Select Language:</b>"
+    if update.callback_query:
+        await update.callback_query.message.reply_photo(photo=IMG_LANG, caption=msg_text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_photo(photo=IMG_LANG, caption=msg_text, reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECT_LANGUAGE
 
 async def lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    context.user_data['lang'] = query.data.split('_')[1]
-    lang = context.user_data['lang']
+    await query.answer() # সাথে সাথে উত্তর দেওয়া
+    
+    lang = query.data.split('_')[1]
+    context.user_data['lang'] = lang
     t = TEXTS[lang]
+    
     keyboard = [[InlineKeyboardButton("🔵 1XBET", callback_data='platform_1xbet'),
                  InlineKeyboardButton("🟡 MELBET", callback_data='platform_melbet')],
                 [InlineKeyboardButton(t['btn_help'], url=ADMIN_USER_LINK)]]
+    
     await query.message.delete()
     await context.bot.send_photo(chat_id=update.effective_chat.id, photo=IMG_CHOOSE_PLATFORM, 
                                  caption=t['choose_platform_caption'], 
-                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+                                 reply_markup=InlineKeyboardMarkup(keyboard))
     return CHOOSE_PLATFORM
 
 async def platform_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
     choice = query.data
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
+    
     p_name = "1XBET" if "1xbet" in choice else "MELBET"
     promo = "BLACK696" if "1xbet" in choice else "BLACK220"
     context.user_data['p_name'] = p_name
@@ -165,65 +177,58 @@ async def platform_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.delete()
     await context.bot.send_photo(chat_id=update.effective_chat.id, photo=IMG_REGISTRATION, 
-                                 caption=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+                                 caption=text, reply_markup=InlineKeyboardMarkup(keyboard))
     return CHOOSE_PLATFORM
 
 async def ask_id_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     lang = context.user_data.get('lang', 'en')
-    await query.message.reply_text(TEXTS[lang]['wait_msg'], parse_mode='HTML')
-    await asyncio.sleep(2)
-    await query.message.reply_text(TEXTS[lang]['ask_id'], parse_mode='HTML')
+    
+    # ওয়েট মেসেজ কমিয়ে সরাসরি আইডি চাওয়া (স্পিড বাড়ানোর জন্য)
+    await query.message.reply_text(TEXTS[lang]['ask_id'])
     return WAITING_FOR_ID
 
 async def verify_id_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.message.text.strip()
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
+    
     if not uid.isdigit() or not (9 <= len(uid) <= 10):
-        await update.message.reply_text(t['error_length'], parse_mode='HTML')
+        await update.message.reply_text(t['error_length'])
         return WAITING_FOR_ID
     
+    # প্রসেসিং ডিলিট করে সরাসরি রেজাল্ট (স্পিড আপ)
     promo = context.user_data.get('promo', 'BLACK220')
     keyboard = [[InlineKeyboardButton(t['btn_open_hack'], web_app=WebAppInfo(url=WEBAPP_URL))],
                 [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]]
     
     await context.bot.send_photo(chat_id=update.effective_chat.id, photo=FINAL_IMAGE_URL, 
                                  caption=t['success_caption'].format(uid=uid, promo=promo), 
-                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+                                 reply_markup=InlineKeyboardMarkup(keyboard))
     return ConversationHandler.END
 
-# ================= অ্যাডমিন প্যানেল হ্যান্ডলারস =================
+# ================= অ্যাডমিন প্যানেল =================
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
-    count = get_users_count()
-    keyboard = [[InlineKeyboardButton("📢 Broadcast (পডকাস্ট)", callback_data='bc_start')],
-                [InlineKeyboardButton("📊 Total Users", callback_data='admin_stats')],
+    count = len(get_users_list())
+    keyboard = [[InlineKeyboardButton("📢 Broadcast", callback_data='bc_start')],
+                [InlineKeyboardButton("📊 Stats", callback_data='admin_stats')],
                 [InlineKeyboardButton("❌ Close", callback_data='admin_close')]]
-    await update.message.reply_text(f"👑 <b>Admin Panel</b>\n\nTotal Registered Users: <code>{count}</code>", 
-                                    reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await update.message.reply_text(f"👑 <b>Admin Panel</b>\nUsers: {count}", reply_markup=InlineKeyboardMarkup(keyboard))
     return ADMIN_MAIN
 
 async def admin_close_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_text("❌ অ্যাডমিন প্যানেল বন্ধ করা হয়েছে।")
+    await update.callback_query.answer()
+    await update.callback_query.message.delete()
     return ConversationHandler.END
 
-async def admin_stats_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer(f"Total Users: {get_users_count()}", show_alert=True)
-    return ADMIN_MAIN
-
 async def bc_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.edit_text("📤 <b>কি পাঠাতে চান?</b>\nটেক্সট, ফটো অথবা ভিডিও ক্যাপশনসহ পাঠান।", parse_mode='HTML')
+    await update.callback_query.answer()
+    await update.callback_query.edit_text("📤 Send your message (Text/Photo/Video):")
     return BC_CONTENT
 
 async def bc_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # সব ডাটা ক্লিয়ার করে নেওয়া হচ্ছে নতুন ব্রডকাস্টের জন্য
-    context.user_data['btn_text'] = None
-    context.user_data['btn_url'] = None
-    
     if update.message.photo:
         context.user_data['bc_type'] = 'photo'
         context.user_data['bc_file_id'] = update.message.photo[-1].file_id
@@ -236,115 +241,46 @@ async def bc_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['bc_type'] = 'text'
         context.user_data['bc_text'] = update.message.text
 
-    keyboard = [[InlineKeyboardButton("➕ বাটন যোগ করুন", callback_data='add_btn')],
-                [InlineKeyboardButton("⏩ বাটন ছাড়া পাঠান", callback_data='no_btn')],
-                [InlineKeyboardButton("❌ বাতিল", callback_data='admin_close')]]
-    await update.message.reply_text("আপনি কি এই মেসেজের সাথে কোনো বাটন যোগ করতে চান?", reply_markup=InlineKeyboardMarkup(keyboard))
-    return BC_BUTTON_TEXT
-
-async def bc_add_btn_text_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_text("বাটনে কি লেখা থাকবে? (যেমন: Join Now)")
-    return BC_BUTTON_TEXT
-
-async def bc_get_btn_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['btn_text'] = update.message.text
-    await update.message.reply_text("বাটনের লিংকটি (URL) দিন:")
-    return BC_BUTTON_URL
-
-async def bc_get_btn_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-    if not url.startswith("http"):
-        await update.message.reply_text("❌ ভুল লিংক! লিংক অবশ্যই http:// বা https:// দিয়ে শুরু হতে হবে। আবার দিন:")
-        return BC_BUTTON_URL
-    context.user_data['btn_url'] = url
-    return await bc_confirm_msg(update, context)
-
-async def bc_no_btn_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    context.user_data['btn_text'] = None
-    context.user_data['btn_url'] = None
-    return await bc_confirm_msg(update, context)
-
-async def bc_confirm_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🚀 Send Now", callback_data='confirm_bc')],
                 [InlineKeyboardButton("❌ Cancel", callback_data='admin_close')]]
-    text = "সব ঠিক আছে? ব্রডকাস্ট শুরু করতে 'Send Now' চাপুন।"
-    
-    if update.message:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        await update.callback_query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text("Confirm Broadcast?", reply_markup=InlineKeyboardMarkup(keyboard))
     return BC_CONFIRM
 
 async def bc_final_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     users = get_users_list()
-    await query.edit_text(f"⏳ {len(users)} জন ইউজারের কাছে পাঠানো হচ্ছে...")
+    await query.edit_text(f"Sending to {len(users)} users...")
     
     bc_type = context.user_data.get('bc_type')
     text = context.user_data.get('bc_text')
     fid = context.user_data.get('bc_file_id')
-    btn_text = context.user_data.get('btn_text')
-    btn_url = context.user_data.get('btn_url')
-    
-    markup = None
-    if btn_text and btn_url:
-        markup = InlineKeyboardMarkup([[InlineKeyboardButton(btn_text, url=btn_url)]])
     
     count = 0
     for uid in users:
         try:
             if bc_type == 'photo':
-                await context.bot.send_photo(chat_id=uid, photo=fid, caption=text, reply_markup=markup, parse_mode='HTML')
+                await context.bot.send_photo(chat_id=uid, photo=fid, caption=text, parse_mode='HTML')
             elif bc_type == 'video':
-                await context.bot.send_video(chat_id=uid, video=fid, caption=text, reply_markup=markup, parse_mode='HTML')
+                await context.bot.send_video(chat_id=uid, video=fid, caption=text, parse_mode='HTML')
             else:
-                await context.bot.send_message(chat_id=uid, text=text, reply_markup=markup, parse_mode='HTML')
+                await context.bot.send_message(chat_id=uid, text=text, parse_mode='HTML')
             count += 1
-            await asyncio.sleep(0.05)
-        except: pass
+            if count % 20 == 0: await asyncio.sleep(0.5) # রেট লিমিট এড়াতে
+        except: continue
         
-    await context.bot.send_message(ADMIN_ID, f"✅ ব্রডকাস্ট সম্পন্ন!\nসফলভাবে {count} জনের কাছে পৌঁছেছে।")
+    await context.bot.send_message(ADMIN_ID, f"✅ Broadcast Done! Sent to: {count}")
     return ConversationHandler.END
 
 # ================= মেইন ফাংশন =================
 if __name__ == '__main__':
     keep_alive()
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    admin_handler = ConversationHandler(
-        entry_points=[CommandHandler('admin', admin_cmd)],
-        states={
-            ADMIN_MAIN: [
-                CallbackQueryHandler(bc_start_cb, pattern='bc_start'),
-                CallbackQueryHandler(admin_stats_cb, pattern='admin_stats'),
-                CallbackQueryHandler(admin_close_cb, pattern='admin_close')
-            ],
-            BC_CONTENT: [
-                MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT & ~filters.COMMAND, bc_get_content),
-                CallbackQueryHandler(admin_close_cb, pattern='admin_close')
-            ],
-            BC_BUTTON_TEXT: [
-                CallbackQueryHandler(bc_add_btn_text_step, pattern='add_btn'),
-                CallbackQueryHandler(bc_no_btn_cb, pattern='no_btn'),
-                CallbackQueryHandler(admin_close_cb, pattern='admin_close'),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, bc_get_btn_text)
-            ],
-            BC_BUTTON_URL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, bc_get_btn_url),
-                CallbackQueryHandler(admin_close_cb, pattern='admin_close')
-            ],
-            BC_CONFIRM: [
-                CallbackQueryHandler(bc_final_send, pattern='confirm_bc'),
-                CallbackQueryHandler(admin_close_cb, pattern='admin_close')
-            ]
-        },
-        fallbacks=[CommandHandler('start', start)],
-        per_message=False
-    )
+    
+    # HTML সাপোর্ট ডিফল্ট করা হয়েছে
+    defaults = Defaults(parse_mode=ParseMode.HTML)
+    
+    # concurrent_updates=True ব্যবহার করে স্পিড বাড়ানো হয়েছে
+    application = ApplicationBuilder().token(BOT_TOKEN).defaults(defaults).concurrent_updates(True).build()
 
     user_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -356,11 +292,23 @@ if __name__ == '__main__':
             WAITING_FOR_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, verify_id_final)]
         },
         fallbacks=[CommandHandler('start', start)],
-        per_message=False
+        allow_reentry=True # ইউজার আটকালে আবার স্টার্ট করতে পারবে
+    )
+
+    admin_handler = ConversationHandler(
+        entry_points=[CommandHandler('admin', admin_cmd)],
+        states={
+            ADMIN_MAIN: [CallbackQueryHandler(bc_start_cb, pattern='bc_start'),
+                        CallbackQueryHandler(admin_close_cb, pattern='admin_close')],
+            BC_CONTENT: [MessageHandler(filters.ALL & ~filters.COMMAND, bc_get_content)],
+            BC_CONFIRM: [CallbackQueryHandler(bc_final_send, pattern='confirm_bc')]
+        },
+        fallbacks=[CommandHandler('admin', admin_cmd)],
+        allow_reentry=True
     )
 
     application.add_handler(admin_handler)
     application.add_handler(user_handler)
 
-    print("Bot is alive...")
+    print("Bot is started with High Performance Mode...")
     application.run_polling(drop_pending_updates=True)
