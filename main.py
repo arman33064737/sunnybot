@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ================= ওয়েব সার্ভার (Render/Railway) =================
+# ================= ওয়েব সার্ভার =================
 app = Flask(__name__)
 
 @app.route('/')
@@ -91,7 +91,6 @@ TEXTS = {
 
 # ================= STATES =================
 CHECK_JOIN, SELECT_LANGUAGE, CHOOSE_PLATFORM, WAITING_FOR_ID = range(4)
-# Admin States
 ADMIN_MAIN, BC_CONTENT, BC_BUTTON_TEXT, BC_BUTTON_URL, BC_CONFIRM = range(10, 15)
 
 # ================= DATABASE FUNC =================
@@ -206,6 +205,12 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     return ADMIN_MAIN
 
+async def admin_close_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_text("❌ অ্যাডমিন প্যানেল বন্ধ করা হয়েছে।")
+    return ConversationHandler.END
+
 async def admin_stats_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer(f"Total Users: {get_users_count()}", show_alert=True)
     return ADMIN_MAIN
@@ -215,6 +220,10 @@ async def bc_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BC_CONTENT
 
 async def bc_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # সব ডাটা ক্লিয়ার করে নেওয়া হচ্ছে নতুন ব্রডকাস্টের জন্য
+    context.user_data['btn_text'] = None
+    context.user_data['btn_url'] = None
+    
     if update.message.photo:
         context.user_data['bc_type'] = 'photo'
         context.user_data['bc_file_id'] = update.message.photo[-1].file_id
@@ -228,12 +237,15 @@ async def bc_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['bc_text'] = update.message.text
 
     keyboard = [[InlineKeyboardButton("➕ বাটন যোগ করুন", callback_data='add_btn')],
-                [InlineKeyboardButton("⏩ বাটন ছাড়া পাঠান", callback_data='no_btn')]]
+                [InlineKeyboardButton("⏩ বাটন ছাড়া পাঠান", callback_data='no_btn')],
+                [InlineKeyboardButton("❌ বাতিল", callback_data='admin_close')]]
     await update.message.reply_text("আপনি কি এই মেসেজের সাথে কোনো বাটন যোগ করতে চান?", reply_markup=InlineKeyboardMarkup(keyboard))
     return BC_BUTTON_TEXT
 
-async def bc_add_btn_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.edit_text("বাটনে কি লেখা থাকবে? (যেমন: Join Now)")
+async def bc_add_btn_text_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_text("বাটনে কি লেখা থাকবে? (যেমন: Join Now)")
     return BC_BUTTON_TEXT
 
 async def bc_get_btn_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,13 +254,28 @@ async def bc_get_btn_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BC_BUTTON_URL
 
 async def bc_get_btn_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['btn_url'] = update.message.text
+    url = update.message.text.strip()
+    if not url.startswith("http"):
+        await update.message.reply_text("❌ ভুল লিংক! লিংক অবশ্যই http:// বা https:// দিয়ে শুরু হতে হবে। আবার দিন:")
+        return BC_BUTTON_URL
+    context.user_data['btn_url'] = url
+    return await bc_confirm_msg(update, context)
+
+async def bc_no_btn_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    context.user_data['btn_text'] = None
+    context.user_data['btn_url'] = None
     return await bc_confirm_msg(update, context)
 
 async def bc_confirm_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🚀 Send Now", callback_data='confirm_bc')],
                 [InlineKeyboardButton("❌ Cancel", callback_data='admin_close')]]
-    await (update.message.reply_text if update.message else update.callback_query.message.reply_text)("সব ঠিক আছে? ব্রডকাস্ট শুরু করতে 'Send Now' চাপুন।", reply_markup=InlineKeyboardMarkup(keyboard))
+    text = "সব ঠিক আছে? ব্রডকাস্ট শুরু করতে 'Send Now' চাপুন।"
+    
+    if update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.callback_query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     return BC_CONFIRM
 
 async def bc_final_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -283,34 +310,42 @@ async def bc_final_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(ADMIN_ID, f"✅ ব্রডকাস্ট সম্পন্ন!\nসফলভাবে {count} জনের কাছে পৌঁছেছে।")
     return ConversationHandler.END
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("বাতিল করা হয়েছে।")
-    return ConversationHandler.END
-
 # ================= মেইন ফাংশন =================
 if __name__ == '__main__':
     keep_alive()
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # অ্যাডমিন কনভারসেশন (আগে রাখতে হবে)
     admin_handler = ConversationHandler(
         entry_points=[CommandHandler('admin', admin_cmd)],
         states={
-            ADMIN_MAIN: [CallbackQueryHandler(bc_start_cb, pattern='bc_start'),
-                         CallbackQueryHandler(admin_stats_cb, pattern='admin_stats'),
-                         CallbackQueryHandler(lambda u,c: ConversationHandler.END, pattern='admin_close')],
-            BC_CONTENT: [MessageHandler(filters.ALL & ~filters.COMMAND, bc_get_content)],
-            BC_BUTTON_TEXT: [CallbackQueryHandler(bc_add_btn_text, pattern='add_btn'),
-                             CallbackQueryHandler(bc_confirm_msg, pattern='no_btn'),
-                             MessageHandler(filters.TEXT & ~filters.COMMAND, bc_get_btn_text)],
-            BC_BUTTON_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, bc_get_btn_url)],
-            BC_CONFIRM: [CallbackQueryHandler(bc_final_send, pattern='confirm_bc')]
+            ADMIN_MAIN: [
+                CallbackQueryHandler(bc_start_cb, pattern='bc_start'),
+                CallbackQueryHandler(admin_stats_cb, pattern='admin_stats'),
+                CallbackQueryHandler(admin_close_cb, pattern='admin_close')
+            ],
+            BC_CONTENT: [
+                MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT & ~filters.COMMAND, bc_get_content),
+                CallbackQueryHandler(admin_close_cb, pattern='admin_close')
+            ],
+            BC_BUTTON_TEXT: [
+                CallbackQueryHandler(bc_add_btn_text_step, pattern='add_btn'),
+                CallbackQueryHandler(bc_no_btn_cb, pattern='no_btn'),
+                CallbackQueryHandler(admin_close_cb, pattern='admin_close'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, bc_get_btn_text)
+            ],
+            BC_BUTTON_URL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, bc_get_btn_url),
+                CallbackQueryHandler(admin_close_cb, pattern='admin_close')
+            ],
+            BC_CONFIRM: [
+                CallbackQueryHandler(bc_final_send, pattern='confirm_bc'),
+                CallbackQueryHandler(admin_close_cb, pattern='admin_close')
+            ]
         },
         fallbacks=[CommandHandler('start', start)],
         per_message=False
     )
 
-    # ইউজার কনভারসেশন
     user_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
