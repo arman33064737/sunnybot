@@ -56,10 +56,19 @@ app = Flask(__name__)
 def home(): return "Running!"
 def run_flask(): app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 
+# ================= মেম্বারশিপ চেক ফাংশন =================
+async def is_user_joined(context, user_id):
+    try:
+        member = await context.bot.get_chat_member(REQUIRED_CHANNEL_ID, user_id)
+        if member.status in ['creator', 'administrator', 'member']:
+            return True
+    except Exception:
+        return False
+    return False
+
 # ================= এডমিন লজিক =================
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
-    
     kb = [
         [InlineKeyboardButton("📢 Broadcast", callback_data='go_bc')],
         [InlineKeyboardButton("📊 Total Users", callback_data='stats')],
@@ -71,9 +80,8 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     if query.data == 'go_bc':
-        await query.edit_message_text("📤 <b>Broadcast Mode:</b>\nএখন মেসেজ পাঠান।")
+        await query.edit_message_text("📤 মেসেজটি পাঠান (Text, Photo, বা Video):")
         return BC_WAIT
     elif query.data == 'stats':
         await query.message.reply_text(f"Total Users: {len(get_users())}")
@@ -99,60 +107,48 @@ async def start_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ================= ইউজার লজিক (FIXED) =================
-async def check_membership(bot, user_id):
-    try:
-        member = await bot.get_chat_member(REQUIRED_CHANNEL_ID, user_id)
-        return member.status in ['creator', 'administrator', 'member']
-    except:
-        return False
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    save_user(user.id)
-    
-    # মেম্বারশিপ চেক
-    is_member = await check_membership(context.bot, user.id)
+    user_id = update.effective_user.id
+    save_user(user_id)
 
-    if not is_member:
+    # জয়েন আছে কিনা চেক করুন
+    joined = await is_user_joined(context, user_id)
+
+    if not joined:
         kb = [
             [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_INVITE_LINK)],
-            [InlineKeyboardButton("✅ Joined", callback_data='check_join')]
+            [InlineKeyboardButton("✅ Joined", callback_data='check_again')]
         ]
-        text = "👋 <b>You must join our channel to use this bot!</b>\n\nনিচের চ্যানেলে জয়েন করে 'Joined' বাটনে ক্লিক করুন।"
+        text = "👋 <b>Welcome!</b>\nআপনি আমাদের চ্যানেলে জয়েন নেই। দয়া করে আগে জয়েন করুন, তারপর নিচের 'Joined' বাটনে ক্লিক করুন।"
         
+        # যদি বাটনের মাধ্যমে আসে (CallbackQuery)
         if update.callback_query:
-            await update.callback_query.message.delete()
-            await context.bot.send_photo(update.effective_chat.id, IMG_START, text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.message.reply_photo(IMG_START, text, reply_markup=InlineKeyboardMarkup(kb))
+            await update.callback_query.answer("❌ আপনি এখনো জয়েন করেননি!", show_alert=True)
+            # মেসেজ আপডেট করার দরকার নেই যদি ইউজার জয়েন না করে
+            return USER_SIDE
+        
+        # যদি সরাসরি /start কম্যান্ড দিয়ে আসে
+        await update.message.reply_photo(IMG_START, text, reply_markup=InlineKeyboardMarkup(kb))
         return USER_SIDE
 
-    # যদি জয়েন থাকে তবে ভাষা পছন্দ করতে বলবে
+    # যদি ইউজার জয়েন থাকে, তবে ভাষা সিলেক্ট করতে বলবে
     kb = [[InlineKeyboardButton("🇺🇸 English", callback_data='en'), InlineKeyboardButton("🇧🇩 বাংলা", callback_data='bn')]]
     if update.callback_query:
         await update.callback_query.message.delete()
         await context.bot.send_photo(update.effective_chat.id, IMG_LANG, "🌐 <b>Select Language:</b>", reply_markup=InlineKeyboardMarkup(kb))
     else:
         await update.message.reply_photo(IMG_LANG, "🌐 <b>Select Language:</b>", reply_markup=InlineKeyboardMarkup(kb))
+    
     return USER_SIDE
 
 async def user_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
-    user_id = update.effective_user.id
 
-    # জয়েন বাটন চেক করা
-    if data == 'check_join':
-        is_member = await check_membership(context.bot, user_id)
-        if is_member:
-            # জয়েন থাকলে ভাষা সিলেকশনে পাঠাবে
-            kb = [[InlineKeyboardButton("🇺🇸 English", callback_data='en'), InlineKeyboardButton("🇧🇩 বাংলা", callback_data='bn')]]
-            await query.message.delete()
-            await context.bot.send_photo(update.effective_chat.id, IMG_LANG, "🌐 <b>Select Language:</b>", reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await query.answer("❌ You haven't joined yet!", show_alert=True)
-        return USER_SIDE
+    # 'Joined' বাটনে ক্লিক করলে আবার স্টার্ট ফাংশন রান করবে
+    if data == 'check_again':
+        return await start(update, context)
 
     if data in ['en', 'bn']:
         context.user_data['lang'] = data
@@ -165,23 +161,22 @@ async def user_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['promo'] = promo
         kb = [[InlineKeyboardButton("🔗 Register", url=LINK_REGISTRATION)], [InlineKeyboardButton("✅ Done", callback_data='id_step')]]
         await query.message.delete()
-        await context.bot.send_photo(update.effective_chat.id, IMG_REGISTRATION, f"🚀 <b>Promo:</b> <code>{promo}</code>\n\nঅ্যাকাউন্ট খুলে নিচের 'Done' বাটনে ক্লিক করে আপনার ID পাঠান।", reply_markup=InlineKeyboardMarkup(kb))
+        await context.bot.send_photo(update.effective_chat.id, IMG_REGISTRATION, f"🚀 <b>Promo:</b> <code>{promo}</code>\n\nনিচের লিঙ্ক থেকে অ্যাকাউন্ট খুলে আপনার ID দিন।", reply_markup=InlineKeyboardMarkup(kb))
     
     elif data == 'id_step':
-        await query.message.reply_text("📩 <b>আপনার ID নাম্বারটি এখানে লিখুন:</b>")
-        return USER_SIDE
+        await query.message.reply_text("📩 <b>আপনার প্লেয়ার ID নাম্বারটি পাঠান:</b>")
     
     return USER_SIDE
 
 async def id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.message.text
-    if not uid.isdigit() or len(uid) < 8:
-        await update.message.reply_text("❌ <b>ভুল ID!</b> সঠিক আইডি নাম্বার পাঠান।")
+    if not uid.isdigit() or len(uid) < 6:
+        await update.message.reply_text("❌ <b>ভুল ID!</b> দয়া করে সঠিক প্লেয়ার আইডি পাঠান।")
         return USER_SIDE
     
     promo = context.user_data.get('promo', 'BLACK220')
     kb = [[InlineKeyboardButton("🍎 OPEN HACK", web_app=WebAppInfo(url=WEBAPP_URL))], [InlineKeyboardButton("👨‍💻 Admin", url=ADMIN_USER_LINK)]]
-    await update.message.reply_photo(FINAL_IMAGE_URL, f"✅ <b>Verified!</b>\n\n<b>ID:</b> {uid}\n<b>Promo:</b> {promo}\n\nএখন নিচের অ্যাপ অপশনে ক্লিক করে কাজ শুরু করুন।", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_photo(FINAL_IMAGE_URL, f"✅ <b>Verified!</b>\n\n<b>ID:</b> {uid}\n<b>Promo:</b> {promo}", reply_markup=InlineKeyboardMarkup(kb))
     return ConversationHandler.END
 
 # ================= মেইন রানার =================
@@ -190,8 +185,8 @@ if __name__ == '__main__':
     
     bot_app = ApplicationBuilder().token(BOT_TOKEN).defaults(Defaults(parse_mode=ParseMode.HTML)).concurrent_updates(True).build()
 
-    # Admin Handler
-    admin_conv = ConversationHandler(
+    # Admin Logic
+    admin_handler = ConversationHandler(
         entry_points=[CommandHandler('admin', admin_cmd)],
         states={
             ADMIN_SIDE: [CallbackQueryHandler(admin_callback)],
@@ -201,19 +196,21 @@ if __name__ == '__main__':
         allow_reentry=True
     )
 
-    # User Handler
-    user_conv = ConversationHandler(
+    # User Logic
+    user_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            USER_SIDE: [CallbackQueryHandler(user_callback), 
-                        MessageHandler(filters.TEXT & ~filters.COMMAND, id_handler)]
+            USER_SIDE: [
+                CallbackQueryHandler(user_callback), 
+                MessageHandler(filters.TEXT & ~filters.COMMAND, id_handler)
+            ]
         },
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
     )
 
-    bot_app.add_handler(admin_conv)
-    bot_app.add_handler(user_conv)
+    bot_app.add_handler(admin_handler)
+    bot_app.add_handler(user_handler)
     
-    print("Bot is ready and fixed!")
+    print("Bot is started successfully!")
     bot_app.run_polling(drop_pending_updates=True)
