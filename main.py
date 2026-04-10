@@ -44,8 +44,13 @@ BOT_TOKEN = "8511299158:AAFXkGzhz5Li22MXmXl1wThQLaSGp0om2Lc"
 ADMIN_ID = 7406442919  
 REQUIRED_CHANNEL_ID = "-1001481593780"
 
+# আপনার দেওয়া নতুন প্রোমো কোড এখানে সেট করা হয়েছে
+PROMO_CODES = {
+    "1XBET": "BLACK696",
+    "MELBET": "BETBD666"
+}
+
 LINK_REGISTRATION = "https://bit.ly/BLACK220" 
-PROMO_CODE = "BLACK220" 
 
 CHANNEL_INVITE_LINK = "https://t.me/+3U0nMzWs4Aw0YjFl"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
@@ -137,7 +142,6 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= গ্লোবাল এরর হ্যান্ডলার =================
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
-    # এডমিনকে নোটিফাই
     try:
         await context.bot.send_message(
             chat_id=ADMIN_ID,
@@ -147,9 +151,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except:
         pass
 
-# ================= হেলপার ফাংশন (ছবি + টেক্সট সহ মেসেজ পাঠানো) =================
+# ================= হেলপার ফাংশন =================
 async def safe_send_photo(context, chat_id, photo, caption=None, reply_markup=None, parse_mode='HTML'):
-    """ছবি পাঠাতে ব্যর্থ হলে টেক্সট মেসেজ পাঠায়"""
     try:
         await context.bot.send_photo(
             chat_id=chat_id,
@@ -159,20 +162,12 @@ async def safe_send_photo(context, chat_id, photo, caption=None, reply_markup=No
             parse_mode=parse_mode
         )
     except BadRequest as e:
-        logger.warning(f"Photo send failed, sending text instead. Error: {e}")
-        # ছবি ছাড়া শুধু টেক্সট পাঠাই
         text = caption if caption else "Please check below:"
         await context.bot.send_message(
             chat_id=chat_id,
             text=text,
             reply_markup=reply_markup,
             parse_mode=parse_mode
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error in safe_send_photo: {e}")
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="An error occurred. Please try again later."
         )
 
 # ================= হ্যান্ডলার =================
@@ -220,21 +215,14 @@ async def show_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text = "🌐 <b>Select Language / ভাষা নির্বাচন করুন:</b>"
     if update.callback_query:
         await update.callback_query.message.delete()
-        await safe_send_photo(
-            context,
-            chat_id=update.effective_chat.id,
-            photo=IMG_LANG,
-            caption=text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    else:
-        await safe_send_photo(
-            context,
-            chat_id=update.effective_chat.id,
-            photo=IMG_LANG,
-            caption=text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+    
+    await safe_send_photo(
+        context,
+        chat_id=update.effective_chat.id,
+        photo=IMG_LANG,
+        caption=text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -249,8 +237,8 @@ async def show_platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
     keyboard = [
-        [InlineKeyboardButton("🔵 1XBET", callback_data='platform_1xbet'),
-         InlineKeyboardButton("🟡 MELBET", callback_data='platform_melbet')],
+        [InlineKeyboardButton("🔵 1XBET", callback_data='platform_1XBET'),
+         InlineKeyboardButton("🟡 MELBET", callback_data='platform_MELBET')],
         [InlineKeyboardButton(t['btn_help'], url=ADMIN_USER_LINK)]
     ]
     await query.message.delete()
@@ -265,13 +253,20 @@ async def show_platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def platform_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    choice = query.data
+    
+    # ইউজার কোন প্ল্যাটফর্ম সিলেক্ট করল তা সেভ রাখা
+    platform_name = query.data.split('_')[1] # '1XBET' or 'MELBET'
+    context.user_data['chosen_platform'] = platform_name
+    
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
-    p_name = "1XBET" if choice == 'platform_1xbet' else "MELBET"
-    text = f"{t['reg_title'].format(platform=p_name)}\n\n{t['reg_msg'].format(promo=PROMO_CODE)}"
+    
+    # সঠিক প্রোমো কোড নির্বাচন
+    promo = PROMO_CODES.get(platform_name, "BLACK696")
+    
+    text = f"{t['reg_title'].format(platform=platform_name)}\n\n{t['reg_msg'].format(promo=promo)}"
     keyboard = [
-        [InlineKeyboardButton(t['btn_reg_link'].format(platform=p_name), url=LINK_REGISTRATION)],
+        [InlineKeyboardButton(t['btn_reg_link'].format(platform=platform_name), url=LINK_REGISTRATION)],
         [InlineKeyboardButton(t['btn_next'], callback_data='account_created')],
         [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]
     ]
@@ -302,22 +297,28 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.message.text.strip()
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
+    
     if not uid.isdigit(): 
         await update.message.reply_text(t['error_digit'], parse_mode='HTML')
         return WAITING_FOR_ID
     if len(uid) < 9 or len(uid) > 10: 
         await update.message.reply_text(t['error_length'], parse_mode='HTML')
         return WAITING_FOR_ID
+    
+    # প্ল্যাটফর্ম অনুযায়ী সঠিক প্রোমো কোড সাকসেস মেসেজে দেখানো
+    platform = context.user_data.get('chosen_platform', '1XBET')
+    promo = PROMO_CODES.get(platform, "BLACK696")
+    
     keyboard = [
         [InlineKeyboardButton(t['btn_open_hack'], web_app=WebAppInfo(url=WEBAPP_URL))],
         [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]
     ]
-    # ছবি সহ মেসেজ পাঠানোর চেষ্টা, ব্যর্থ হলে টেক্সট
+    
     await safe_send_photo(
         context,
         chat_id=update.effective_chat.id,
         photo=FINAL_IMAGE_URL,
-        caption=t['success_caption'].format(uid=uid, promo=PROMO_CODE),
+        caption=t['success_caption'].format(uid=uid, promo=promo),
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return ConversationHandler.END
@@ -404,8 +405,7 @@ async def admin_perform_broadcast(update: Update, context: ContextTypes.DEFAULT_
                 await context.bot.send_message(uid, text=context.user_data['text'], reply_markup=markup, parse_mode='HTML')
             count += 1
             await asyncio.sleep(0.05)
-        except Exception as e:
-            logger.error(f"Broadcast error to {uid}: {e}")
+        except Exception:
             pass
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"✅ Sent to {count} users.")
     return ConversationHandler.END
@@ -416,16 +416,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= মেইন =================
 if __name__ == '__main__':
-    # Flask থ্রেড শুরু
     keep_alive()
-
-    # বিল্ড অ্যাপ্লিকেশন
     application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    # এরর হ্যান্ডলার যোগ
     application.add_error_handler(error_handler)
 
-    # ইউজার কনভারসেশন হ্যান্ডলার
     user_conv = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -441,7 +435,6 @@ if __name__ == '__main__':
         per_message=False
     )
 
-    # অ্যাডমিন কনভারসেশন হ্যান্ডলার
     admin_conv = ConversationHandler(
         entry_points=[CommandHandler('admin', admin_start)],
         states={
@@ -458,6 +451,5 @@ if __name__ == '__main__':
     application.add_handler(admin_conv)
     application.add_handler(user_conv)
 
-    # পোলিং শুরু
     print("Bot is running...")
     application.run_polling()
