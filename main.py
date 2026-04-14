@@ -1,6 +1,7 @@
 import logging
 import os
 import asyncio
+import sys
 from threading import Thread
 from flask import Flask
 import firebase_admin
@@ -21,44 +22,56 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # ================= ফায়ারবেস সেটআপ =================
-# আপনার দেওয়া JSON ফাইলটি 'firebase-key.json' নামে সেভ থাকতে হবে
-cred = credentials.Certificate("firebase-key.json")
-firebase_admin.initialize_app(cred, {
-    'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/' # <--- আপনার ডাটাবেস ইউআরএল এখানে দিন
-})
+# আপনার দেওয়া JSON ফাইলটি অবশ্যই 'firebase-key.json' নামে আপনার প্রোজেক্ট ফোল্ডারে থাকতে হবে
+try:
+    if not firebase_admin._apps:
+        cred = credentials.Certificate("firebase-key.json")
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/'
+        })
+    logger.info("Firebase initialized successfully.")
+except Exception as e:
+    logger.error(f"Firebase error: {e}")
+    # ফায়ারবেস কি না থাকলেও যাতে অ্যাপ ক্রাশ না করে
+    pass
 
 # ================= ডাটাবেস ফাংশন =================
 def save_user_to_firebase(user):
-    """ইউজার ডাটা ফায়ারবেসে সেভ করে"""
-    ref = db.reference(f'users/{user.id}')
-    if not ref.get():
-        ref.set({
-            'id': user.id,
-            'first_name': user.first_name,
-            'username': user.username,
-            'status': 'active'
-        })
-        logger.info(f"New user saved to Firebase: {user.id}")
+    try:
+        ref = db.reference(f'users/{user.id}')
+        if not ref.get():
+            ref.set({
+                'id': user.id,
+                'first_name': user.first_name,
+                'username': user.username,
+                'status': 'active'
+            })
+    except Exception as e:
+        logger.error(f"Error saving to Firebase: {e}")
 
 def get_all_users():
-    """সব ইউজারের আইডি লিস্ট দেয়"""
-    ref = db.reference('users')
-    users = ref.get()
-    return list(users.keys()) if users else []
+    try:
+        ref = db.reference('users')
+        users = ref.get()
+        return list(users.keys()) if users else []
+    except:
+        return []
 
-# ================= ওয়েব সার্ভার (Railway) =================
+# ================= ওয়েব সার্ভার (Render এর পোর্টের জন্য গুরুত্বপূর্ণ) =================
 app = Flask(__name__)
+
 @app.route('/')
-def home(): return "Bot is running 24/7 with Firebase!"
+def home():
+    return "Bot is active!"
+
+@app.route('/health')
+def health():
+    return "OK", 200
 
 def run_flask():
+    # Render এর জন্য পোর্ট ৮0৮0 বা এনভায়রনমেন্ট পোর্ট ব্যবহার করা
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
 
 # ================= কনফিগারেশন =================
 BOT_TOKEN = "8511299158:AAFXkGzhz5Li22MXmXl1wThQLaSGp0om2Lc"
@@ -77,7 +90,7 @@ IMG_CHOOSE_PLATFORM = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a
 IMG_REGISTRATION = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a5daa131c74.png"
 FINAL_IMAGE_URL = "https://i.ibb.co.com/vxfM0vv5/file-00000000f15071fa8c883abb1421fa69.png"
 
-# ================= TEXTS =================
+# [TEXTS অংশটি আপনার আগের কোডের মতোই থাকবে, জায়গা বাঁচাতে এখানে লিখলাম না]
 TEXTS = {
     'en': {
         'choose_platform_caption': "🎮 <b>CHOOSE YOUR PLATFORM</b>\n\nWhich casino do you want to hack? Select below 👇",
@@ -113,7 +126,7 @@ TEXTS = {
 
 # ================= STATES =================
 CHECK_JOIN, SELECT_LANGUAGE, CHOOSE_PLATFORM, WAITING_FOR_ID = range(4)
-ADMIN_MENU, ADMIN_GET_CONTENT, ADMIN_CONFIRM = range(10, 13)
+ADMIN_GET_CONTENT, ADMIN_CONFIRM = range(10, 12)
 
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -130,7 +143,7 @@ async def safe_send_photo(context, chat_id, photo, caption=None, reply_markup=No
 # ================= হ্যান্ডলারস =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    save_user_to_firebase(user) # ফায়ারবেসে সেভ হচ্ছে
+    save_user_to_firebase(user)
     context.user_data.clear()
 
     if not await check_membership(update, context):
@@ -163,7 +176,6 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data['lang'] = query.data.split('_')[1]
-    
     lang = context.user_data['lang']
     t = TEXTS[lang]
     keyboard = [[InlineKeyboardButton("🔵 1XBET", callback_data='platform_1XBET'), InlineKeyboardButton("🟡 MELBET", callback_data='platform_MELBET')],
@@ -181,7 +193,6 @@ async def platform_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get('lang', 'en')
     t = TEXTS[lang]
     promo = PROMO_CODES.get(platform)
-    
     text = f"{t['reg_title'].format(platform=platform)}\n\n{t['reg_msg'].format(promo=promo)}"
     keyboard = [[InlineKeyboardButton(t['btn_reg_link'].format(platform=platform), url=LINK_REGISTRATION)],
                 [InlineKeyboardButton(t['btn_next'], callback_data='account_created')]]
@@ -195,7 +206,7 @@ async def wait_and_ask_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     lang = context.user_data.get('lang', 'en')
     msg = await query.message.reply_text(TEXTS[lang]['wait_msg'], parse_mode='HTML')
-    await asyncio.sleep(3)
+    await asyncio.sleep(2)
     try: await msg.delete()
     except: pass
     await query.message.reply_text(TEXTS[lang]['ask_id'], parse_mode='HTML')
@@ -208,43 +219,45 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not uid.isdigit() or len(uid) < 9:
         await update.message.reply_text(t['error_digit'])
         return WAITING_FOR_ID
-    
     platform = context.user_data.get('chosen_platform', '1XBET')
     promo = PROMO_CODES.get(platform)
     keyboard = [[InlineKeyboardButton(t['btn_open_hack'], web_app=WebAppInfo(url=WEBAPP_URL))],
                 [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]]
-    
     await safe_send_photo(context, update.effective_chat.id, FINAL_IMAGE_URL, t['success_caption'].format(uid=uid, promo=promo), InlineKeyboardMarkup(keyboard))
     return ConversationHandler.END
 
-# ================= অ্যাডমিন ব্রডকাস্ট =================
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
-    await update.message.reply_text("👑 Admin: Send me the message (Text/Photo) to broadcast.")
+    await update.message.reply_text("👑 Admin: Send message to broadcast.")
     return ADMIN_GET_CONTENT
 
 async def admin_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['bc_msg'] = update.message
-    await update.message.reply_text("Confirm? Type /send to broadcast to all.")
+    await update.message.reply_text("Confirm? Type /send")
     return ADMIN_CONFIRM
 
 async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_ids = get_all_users()
     msg = context.user_data['bc_msg']
     count = 0
-    await update.message.reply_text(f"🚀 Sending to {len(user_ids)} users...")
+    await update.message.reply_text(f"🚀 Sending to {len(user_ids)}...")
     for uid in user_ids:
         try:
             await context.bot.copy_message(chat_id=uid, from_chat_id=msg.chat_id, message_id=msg.message_id)
             count += 1
             await asyncio.sleep(0.05)
         except: pass
-    await update.message.reply_text(f"✅ Sent to {count} users.")
+    await update.message.reply_text(f"✅ Sent to {count}")
     return ConversationHandler.END
 
-# ================= মেইন =================
-if __name__ == '__main__':
-    keep_alive()
+# ================= মেইন ফাংশন =================
+def main():
+    # ১. Flask সার্ভার ব্যাকগ্রাউন্ডে চালানো
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
+    # ২. টেলিগ্রাম বট সেটআপ
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     user_conv = ConversationHandler(
@@ -273,5 +286,9 @@ if __name__ == '__main__':
 
     application.add_handler(user_conv)
     application.add_handler(admin_conv)
-    print("Bot with Firebase is running...")
+    
+    print("Bot is running...")
     application.run_polling()
+
+if __name__ == '__main__':
+    main()
