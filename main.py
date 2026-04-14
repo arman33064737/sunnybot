@@ -1,17 +1,11 @@
 import logging
 import os
 import asyncio
+import sys
 from threading import Thread
 from flask import Flask
-
-# এভরিথিং ইমপোর্ট করার আগে চেক করা
-try:
-    import firebase_admin
-    from firebase_admin import credentials, db
-    HAS_FIREBASE = True
-except ImportError:
-    HAS_FIREBASE = False
-
+import firebase_admin
+from firebase_admin import credentials, db
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     ApplicationBuilder,
@@ -23,55 +17,65 @@ from telegram.ext import (
     ConversationHandler
 )
 
-# ================= লগিং =================
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# ================= লগিং সেটআপ =================
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ================= ফায়ারবেস সেটআপ =================
-if HAS_FIREBASE:
-    try:
-        if not firebase_admin._apps:
-            cred = credentials.Certificate("firebase-key.json")
-            firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/'
-            })
-        logger.info("✅ Firebase successful.")
-    except Exception as e:
-        logger.error(f"❌ Firebase Error: {e}")
-else:
-    logger.error("❌ firebase-admin library NOT FOUND!")
+# ================= ফায়ারবেস কানেকশন =================
+try:
+    if not firebase_admin._apps:
+        # নিশ্চিত করুন আপনার ফাইলে নাম 'firebase-key.json' ই আছে
+        cred = credentials.Certificate("firebase-key.json")
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/'
+        })
+    logger.info("✅ Firebase Connected Successfully!")
+    
+    # টেস্টিং এর জন্য একটি ডাটা পাঠানো (ডাটাবেস চেক করার জন্য)
+    db.reference('connection_test').set({'status': 'online', 'time': 'running'})
+    
+except Exception as e:
+    logger.error(f"❌ Firebase Critical Error: {e}")
+    # ফায়ারবেস কানেক্ট না হলে রেন্ডারে যাতে এরর দেখায়
+    sys.exit(1) 
 
 # ================= ডাটাবেস ফাংশন =================
 def save_user_to_firebase(user):
-    if not HAS_FIREBASE: 
-        logger.error("❌ ফায়ারবেস লাইব্রেরি নেই, তাই ডাটা সেভ হচ্ছে না!")
-        return
     try:
         ref = db.reference(f'users/{user.id}')
-        # ইউজার যদি আগে থেকেই থাকে তবে নতুন করে সেভ করার দরকার নেই
-        if not ref.get():
+        # ইউজার যদি আগে না থাকে তবেই সেভ করবে
+        data = ref.get()
+        if data is None:
             ref.set({
                 'id': user.id,
                 'first_name': user.first_name,
                 'username': user.username,
                 'status': 'active'
             })
-            logger.info(f"✅ ডাটাবেসে নতুন ইউজার সেভ হয়েছে: {user.id}")
+            logger.info(f"🆕 New user saved: {user.id}")
         else:
-            logger.info(f"ℹ️ ইউজার {user.id} আগে থেকেই ডাটাবেসে আছে।")
+            logger.info(f"✅ Old user detected: {user.id}")
     except Exception as e:
-        logger.error(f"❌ ফায়ারবেসে ডাটা সেভ করতে সমস্যা: {e}")
+        logger.error(f"❌ Error saving user: {e}")
 
-# ================= সার্ভার =================
+def get_all_users():
+    try:
+        ref = db.reference('users')
+        users = ref.get()
+        return list(users.keys()) if users else []
+    except:
+        return []
+
+# ================= ওয়েব সার্ভার (Render Port Binding) =================
 app = Flask(__name__)
 @app.route('/')
-def home(): return "Bot is running!"
+def home(): return "Bot is Online"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# ================= কনফিগারেশন =================
+# ================= বটের কনফিগারেশন =================
 BOT_TOKEN = "8511299158:AAFXkGzhz5Li22MXmXl1wThQLaSGp0om2Lc"
 ADMIN_ID = 7406442919  
 REQUIRED_CHANNEL_ID = "-1001481593780"
@@ -81,48 +85,49 @@ CHANNEL_INVITE_LINK = "https://t.me/+3U0nMzWs4Aw0YjFl"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
 WEBAPP_URL = "https://1xbet-melbet-apple.unaux.com/"
 
+# Images
 IMG_START = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
 IMG_LANG = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
 IMG_CHOOSE_PLATFORM = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a5daa131c74.png"
 IMG_REGISTRATION = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a5daa131c74.png"
 FINAL_IMAGE_URL = "https://i.ibb.co.com/vxfM0vv5/file-00000000f15071fa8c883abb1421fa69.png"
 
+# TEXTS (বাংলা ও ইংরেজি)
 TEXTS = {
     'en': {
         'choose_platform_caption': "🎮 <b>CHOOSE YOUR PLATFORM</b>",
-        'btn_help': "🆘 Help / Support",
+        'btn_help': "🆘 Help",
         'reg_title': "🚀 <b>{platform} REGISTRATION</b>",
-        'reg_msg': "⚠️ <b>WARNING:</b> Hack works ONLY with our Link!\n\n1️⃣ Delete old account.\n2️⃣ Click 'Register' (Use promo <code>{promo}</code>).\n3️⃣ Create account and send ID.",
+        'reg_msg': "⚠️ <b>WARNING:</b> Use promo <code>{promo}</code>.",
         'btn_reg_link': "🔗 Register {platform}",
-        'btn_next': "✅ I Registered (Verify ID)",
-        'wait_msg': "⏳ <b>Connecting to Server...</b>",
+        'btn_next': "✅ I Registered",
+        'wait_msg': "⏳ <b>Connecting...</b>",
         'ask_id': "📩 <b>SEND YOUR NEW ID</b>",
-        'error_digit': "❌ Digits only.",
-        'error_length': "❌ Invalid ID length.",
-        'success_caption': "✅ <b>VERIFIED!</b>\n🆔 ID: <code>{uid}</code>\nPromo: <b>{promo}</b>",
-        'btn_open_hack': "🍎 OPEN HACK (WebApp)",
-        'btn_contact': "👨‍💻 Contact Admin"
+        'error_digit': "❌ Invalid ID.",
+        'success_caption': "✅ <b>VERIFIED!</b>\n🆔 ID: <code>{uid}</code>",
+        'btn_open_hack': "🍎 OPEN HACK",
+        'btn_contact': "👨‍💻 Admin"
     },
     'bn': {
         'choose_platform_caption': "🎮 <b>প্ল্যাটফর্ম নির্বাচন করুন</b>",
-        'btn_help': "🆘 সাহায্য / সাপোর্ট",
+        'btn_help': "🆘 সাহায্য",
         'reg_title': "🚀 <b>{platform} রেজিস্ট্রেশন</b>",
-        'reg_msg': "⚠️ <b>সতর্কতা:</b> হ্যাকটি শুধুমাত্র আমাদের লিংকে কাজ করবে!",
-        'btn_reg_link': "🔗 {platform} রেজিস্ট্রেশন লিংক",
+        'reg_msg': "⚠️ <b>সতর্কতা:</b> প্রোমো ব্যবহার করুন: <code>{promo}</code>.",
+        'btn_reg_link': "🔗 {platform} রেজিস্ট্রেশন",
         'btn_next': "✅ রেজিস্ট্রেশন করেছি",
         'wait_msg': "⏳ <b>সার্ভারে কানেক্ট হচ্ছে...</b>",
         'ask_id': "📩 <b>আপনার আইডি পাঠান</b>",
-        'error_digit': "❌ শুধুমাত্র সংখ্যা পাঠান।",
-        'error_length': "❌ ভুল আইডি।",
-        'success_caption': "✅ <b>ভেরিফাইড সফল!</b>\n🆔 ID: <code>{uid}</code>\nপ্রোমো: <b>{promo}</b>",
-        'btn_open_hack': "🍎 হ্যাক চালু করুন (WebApp)",
-        'btn_contact': "👨‍💻 এডমিন সাপোর্ট"
+        'error_digit': "❌ ভুল আইডি।",
+        'success_caption': "✅ <b>ভেরিফাইড সফল!</b>\n🆔 ID: <code>{uid}</code>",
+        'btn_open_hack': "🍎 হ্যাক চালু করুন",
+        'btn_contact': "👨‍💻 এডমিন"
     }
 }
 
 CHECK_JOIN, SELECT_LANGUAGE, CHOOSE_PLATFORM, WAITING_FOR_ID = range(4)
 ADMIN_GET_CONTENT, ADMIN_CONFIRM = range(10, 12)
 
+# ================= বটের মূল কাজ =================
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID, user_id=update.effective_user.id)
@@ -137,13 +142,15 @@ async def safe_send_photo(context, chat_id, photo, caption=None, reply_markup=No
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    save_user_to_firebase(user)
+    save_user_to_firebase(user) # ডাটাবেসে সেভ হবে
     context.user_data.clear()
+    
     if not await check_membership(update, context):
         keyboard = [[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_INVITE_LINK)],
                     [InlineKeyboardButton("✅ I Have Joined", callback_data='check_join_status')]]
         await safe_send_photo(context, update.effective_chat.id, IMG_START, f"👋 Hello {user.first_name}!\nJoin channel to use this bot.", InlineKeyboardMarkup(keyboard))
         return CHECK_JOIN
+    
     await show_language_menu(update, context)
     return SELECT_LANGUAGE
 
@@ -211,21 +218,22 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not uid.isdigit() or len(uid) < 9:
         await update.message.reply_text(t['error_digit'])
         return WAITING_FOR_ID
+    
     platform = context.user_data.get('chosen_platform', '1XBET')
-    promo = PROMO_CODES.get(platform)
     keyboard = [[InlineKeyboardButton(t['btn_open_hack'], web_app=WebAppInfo(url=WEBAPP_URL))],
                 [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]]
-    await safe_send_photo(context, update.effective_chat.id, FINAL_IMAGE_URL, t['success_caption'].format(uid=uid, promo=promo), InlineKeyboardMarkup(keyboard))
+    await safe_send_photo(context, update.effective_chat.id, FINAL_IMAGE_URL, t['success_caption'].format(uid=uid), InlineKeyboardMarkup(keyboard))
     return ConversationHandler.END
 
+# ================= অ্যাডমিন সেকশন =================
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
-    await update.message.reply_text("👑 Admin: Send message to broadcast.")
+    await update.message.reply_text("👑 Admin: Send me any message to broadcast.")
     return ADMIN_GET_CONTENT
 
 async def admin_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['bc_msg'] = update.message
-    await update.message.reply_text("Confirm? Type /send")
+    await update.message.reply_text("Confirm? Type /send to broadcast.")
     return ADMIN_CONFIRM
 
 async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -239,9 +247,10 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             count += 1
             await asyncio.sleep(0.05)
         except: pass
-    await update.message.reply_text(f"✅ Sent to {count} users.")
+    await update.message.reply_text(f"✅ Finished! Sent to {count} users.")
     return ConversationHandler.END
 
+# ================= মেইন ফাংশন =================
 if __name__ == '__main__':
     Thread(target=run_flask, daemon=True).start()
     application = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -272,5 +281,5 @@ if __name__ == '__main__':
     
     application.add_handler(user_conv)
     application.add_handler(admin_conv)
-    print("Bot is running...")
+    print("Bot is starting...")
     application.run_polling()
