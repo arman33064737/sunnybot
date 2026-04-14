@@ -1,11 +1,17 @@
 import logging
 import os
 import asyncio
-import sys
 from threading import Thread
 from flask import Flask
-import firebase_admin
-from firebase_admin import credentials, db
+
+# এভরিথিং ইমপোর্ট করার আগে চেক করা
+try:
+    import firebase_admin
+    from firebase_admin import credentials, db
+    HAS_FIREBASE = True
+except ImportError:
+    HAS_FIREBASE = False
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     ApplicationBuilder,
@@ -17,63 +23,49 @@ from telegram.ext import (
     ConversationHandler
 )
 
-# ================= লগিং কনফিগারেশন =================
+# ================= লগিং =================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ================= ফায়ারবেস সেটআপ =================
-# আপনার দেওয়া JSON ফাইলটি অবশ্যই 'firebase-key.json' নামে আপনার প্রোজেক্ট ফোল্ডারে থাকতে হবে
-firebase_initialized = False
-try:
-    if not firebase_admin._apps:
-        cred = credentials.Certificate("firebase-key.json")
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/'
-        })
-    firebase_initialized = True
-    logger.info("✅ Firebase initialized successfully.")
-except Exception as e:
-    logger.error(f"❌ Firebase initialization failed: {e}")
+if HAS_FIREBASE:
+    try:
+        if not firebase_admin._apps:
+            cred = credentials.Certificate("firebase-key.json")
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/'
+            })
+        logger.info("✅ Firebase successful.")
+    except Exception as e:
+        logger.error(f"❌ Firebase Error: {e}")
+else:
+    logger.error("❌ firebase-admin library NOT FOUND!")
 
 # ================= ডাটাবেস ফাংশন =================
 def save_user_to_firebase(user):
-    if not firebase_initialized: return
+    if not HAS_FIREBASE: return
     try:
         ref = db.reference(f'users/{user.id}')
         if not ref.get():
-            ref.set({
-                'id': user.id,
-                'first_name': user.first_name,
-                'username': user.username,
-                'status': 'active'
-            })
-    except Exception as e:
-        logger.error(f"Error saving to Firebase: {e}")
+            ref.set({'id': user.id, 'first_name': user.first_name, 'username': user.username})
+    except: pass
 
 def get_all_users():
-    if not firebase_initialized: return []
+    if not HAS_FIREBASE: return []
     try:
         ref = db.reference('users')
         users = ref.get()
         return list(users.keys()) if users else []
-    except:
-        return []
+    except: return []
 
-# ================= ওয়েব সার্ভার (Render এর জন্য অত্যন্ত জরুরি) =================
-server = Flask(__name__)
-
-@server.route('/')
-def home():
-    return "Bot is running!"
-
-@server.route('/health')
-def health():
-    return "OK", 200
+# ================= সার্ভার =================
+app = Flask(__name__)
+@app.route('/')
+def home(): return "Bot is running!"
 
 def run_flask():
-    # রেন্ডার এই PORT এনভায়রনমেন্ট ভেরিয়েবলটি ব্যবহার করে
-    port = int(os.environ.get("PORT", 10000))
-    server.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 # ================= কনফিগারেশন =================
 BOT_TOKEN = "8511299158:AAFXkGzhz5Li22MXmXl1wThQLaSGp0om2Lc"
@@ -236,21 +228,18 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_ids = get_all_users()
     msg = context.user_data['bc_msg']
     count = 0
-    await update.message.reply_text(f"🚀 Sending...")
+    await update.message.reply_text(f"🚀 Sending to {len(user_ids)} users...")
     for uid in user_ids:
         try:
             await context.bot.copy_message(chat_id=uid, from_chat_id=msg.chat_id, message_id=msg.message_id)
             count += 1
             await asyncio.sleep(0.05)
         except: pass
-    await update.message.reply_text(f"✅ Sent to {count}")
+    await update.message.reply_text(f"✅ Sent to {count} users.")
     return ConversationHandler.END
 
-def main():
-    # রেন্ডার পোর্টের জন্য থ্রেড শুরু
+if __name__ == '__main__':
     Thread(target=run_flask, daemon=True).start()
-    
-    # বট শুরু
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
     user_conv = ConversationHandler(
@@ -279,7 +268,5 @@ def main():
     
     application.add_handler(user_conv)
     application.add_handler(admin_conv)
+    print("Bot is running...")
     application.run_polling()
-
-if __name__ == '__main__':
-    main()
