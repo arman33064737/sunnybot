@@ -23,20 +23,21 @@ logger = logging.getLogger(__name__)
 
 # ================= ফায়ারবেস সেটআপ =================
 # আপনার দেওয়া JSON ফাইলটি অবশ্যই 'firebase-key.json' নামে আপনার প্রোজেক্ট ফোল্ডারে থাকতে হবে
+firebase_initialized = False
 try:
     if not firebase_admin._apps:
         cred = credentials.Certificate("firebase-key.json")
         firebase_admin.initialize_app(cred, {
             'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/'
         })
-    logger.info("Firebase initialized successfully.")
+    firebase_initialized = True
+    logger.info("✅ Firebase initialized successfully.")
 except Exception as e:
-    logger.error(f"Firebase error: {e}")
-    # ফায়ারবেস কি না থাকলেও যাতে অ্যাপ ক্রাশ না করে
-    pass
+    logger.error(f"❌ Firebase initialization failed: {e}")
 
 # ================= ডাটাবেস ফাংশন =================
 def save_user_to_firebase(user):
+    if not firebase_initialized: return
     try:
         ref = db.reference(f'users/{user.id}')
         if not ref.get():
@@ -50,6 +51,7 @@ def save_user_to_firebase(user):
         logger.error(f"Error saving to Firebase: {e}")
 
 def get_all_users():
+    if not firebase_initialized: return []
     try:
         ref = db.reference('users')
         users = ref.get()
@@ -57,21 +59,21 @@ def get_all_users():
     except:
         return []
 
-# ================= ওয়েব সার্ভার (Render এর পোর্টের জন্য গুরুত্বপূর্ণ) =================
-app = Flask(__name__)
+# ================= ওয়েব সার্ভার (Render এর জন্য অত্যন্ত জরুরি) =================
+server = Flask(__name__)
 
-@app.route('/')
+@server.route('/')
 def home():
-    return "Bot is active!"
+    return "Bot is running!"
 
-@app.route('/health')
+@server.route('/health')
 def health():
     return "OK", 200
 
 def run_flask():
-    # Render এর জন্য পোর্ট ৮0৮0 বা এনভায়রনমেন্ট পোর্ট ব্যবহার করা
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    # রেন্ডার এই PORT এনভায়রনমেন্ট ভেরিয়েবলটি ব্যবহার করে
+    port = int(os.environ.get("PORT", 10000))
+    server.run(host='0.0.0.0', port=port)
 
 # ================= কনফিগারেশন =================
 BOT_TOKEN = "8511299158:AAFXkGzhz5Li22MXmXl1wThQLaSGp0om2Lc"
@@ -83,17 +85,15 @@ CHANNEL_INVITE_LINK = "https://t.me/+3U0nMzWs4Aw0YjFl"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
 WEBAPP_URL = "https://1xbet-melbet-apple.unaux.com/"
 
-# Images
 IMG_START = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
 IMG_LANG = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
 IMG_CHOOSE_PLATFORM = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a5daa131c74.png"
 IMG_REGISTRATION = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a5daa131c74.png"
 FINAL_IMAGE_URL = "https://i.ibb.co.com/vxfM0vv5/file-00000000f15071fa8c883abb1421fa69.png"
 
-# [TEXTS অংশটি আপনার আগের কোডের মতোই থাকবে, জায়গা বাঁচাতে এখানে লিখলাম না]
 TEXTS = {
     'en': {
-        'choose_platform_caption': "🎮 <b>CHOOSE YOUR PLATFORM</b>\n\nWhich casino do you want to hack? Select below 👇",
+        'choose_platform_caption': "🎮 <b>CHOOSE YOUR PLATFORM</b>",
         'btn_help': "🆘 Help / Support",
         'reg_title': "🚀 <b>{platform} REGISTRATION</b>",
         'reg_msg': "⚠️ <b>WARNING:</b> Hack works ONLY with our Link!\n\n1️⃣ Delete old account.\n2️⃣ Click 'Register' (Use promo <code>{promo}</code>).\n3️⃣ Create account and send ID.",
@@ -108,10 +108,10 @@ TEXTS = {
         'btn_contact': "👨‍💻 Contact Admin"
     },
     'bn': {
-        'choose_platform_caption': "🎮 <b>প্ল্যাটফর্ম নির্বাচন করুন</b>\nনিচে থেকে ক্যাসিনো সিলেক্ট করুন 👇",
+        'choose_platform_caption': "🎮 <b>প্ল্যাটফর্ম নির্বাচন করুন</b>",
         'btn_help': "🆘 সাহায্য / সাপোর্ট",
         'reg_title': "🚀 <b>{platform} রেজিস্ট্রেশন</b>",
-        'reg_msg': "⚠️ <b>সতর্কতা:</b> হ্যাকটি শুধুমাত্র আমাদের লিংকে কাজ করবে!\n\n1️⃣ পুরনো একাউন্ট ডিলিট করুন।\n2️⃣ রেজিস্ট্রেশন করুন (প্রোমো: <code>{promo}</code>)।\n3️⃣ আইডি পাঠান।",
+        'reg_msg': "⚠️ <b>সতর্কতা:</b> হ্যাকটি শুধুমাত্র আমাদের লিংকে কাজ করবে!",
         'btn_reg_link': "🔗 {platform} রেজিস্ট্রেশন লিংক",
         'btn_next': "✅ রেজিস্ট্রেশন করেছি",
         'wait_msg': "⏳ <b>সার্ভারে কানেক্ট হচ্ছে...</b>",
@@ -124,7 +124,6 @@ TEXTS = {
     }
 }
 
-# ================= STATES =================
 CHECK_JOIN, SELECT_LANGUAGE, CHOOSE_PLATFORM, WAITING_FOR_ID = range(4)
 ADMIN_GET_CONTENT, ADMIN_CONFIRM = range(10, 12)
 
@@ -140,18 +139,15 @@ async def safe_send_photo(context, chat_id, photo, caption=None, reply_markup=No
     except:
         await context.bot.send_message(chat_id=chat_id, text=caption, reply_markup=reply_markup, parse_mode='HTML')
 
-# ================= হ্যান্ডলারস =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     save_user_to_firebase(user)
     context.user_data.clear()
-
     if not await check_membership(update, context):
         keyboard = [[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_INVITE_LINK)],
                     [InlineKeyboardButton("✅ I Have Joined", callback_data='check_join_status')]]
         await safe_send_photo(context, update.effective_chat.id, IMG_START, f"👋 Hello {user.first_name}!\nJoin channel to use this bot.", InlineKeyboardMarkup(keyboard))
         return CHECK_JOIN
-    
     await show_language_menu(update, context)
     return SELECT_LANGUAGE
 
@@ -240,7 +236,7 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_ids = get_all_users()
     msg = context.user_data['bc_msg']
     count = 0
-    await update.message.reply_text(f"🚀 Sending to {len(user_ids)}...")
+    await update.message.reply_text(f"🚀 Sending...")
     for uid in user_ids:
         try:
             await context.bot.copy_message(chat_id=uid, from_chat_id=msg.chat_id, message_id=msg.message_id)
@@ -250,16 +246,13 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Sent to {count}")
     return ConversationHandler.END
 
-# ================= মেইন ফাংশন =================
 def main():
-    # ১. Flask সার্ভার ব্যাকগ্রাউন্ডে চালানো
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
-
-    # ২. টেলিগ্রাম বট সেটআপ
+    # রেন্ডার পোর্টের জন্য থ্রেড শুরু
+    Thread(target=run_flask, daemon=True).start()
+    
+    # বট শুরু
     application = ApplicationBuilder().token(BOT_TOKEN).build()
-
+    
     user_conv = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -274,7 +267,7 @@ def main():
         fallbacks=[CommandHandler('start', start)],
         allow_reentry=True
     )
-
+    
     admin_conv = ConversationHandler(
         entry_points=[CommandHandler('admin', admin_start)],
         states={
@@ -283,11 +276,9 @@ def main():
         },
         fallbacks=[CommandHandler('start', start)]
     )
-
+    
     application.add_handler(user_conv)
     application.add_handler(admin_conv)
-    
-    print("Bot is running...")
     application.run_polling()
 
 if __name__ == '__main__':
