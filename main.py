@@ -2,6 +2,7 @@ import logging
 import os
 import asyncio
 import sys
+import json
 from threading import Thread
 from flask import Flask
 import firebase_admin
@@ -24,37 +25,40 @@ logger = logging.getLogger(__name__)
 # ================= ফায়ারবেস কানেকশন =================
 try:
     if not firebase_admin._apps:
-        # নিশ্চিত করুন আপনার ফাইলে নাম 'firebase-key.json' ই আছে
-        cred = credentials.Certificate("firebase-key.json")
+        # রেন্ডার বা এনভায়রনমেন্ট ভেরিয়েবল থেকে ক্রেডেনশিয়াল নেওয়ার চেষ্টা
+        firebase_json = os.environ.get("FIREBASE_JSON")
+        
+        if firebase_json:
+            # যদি এনভায়রনমেন্ট ভেরিয়েবল সেট করা থাকে
+            cred_dict = json.loads(firebase_json)
+            cred = credentials.Certificate(cred_dict)
+            logger.info("✅ Firebase initialized from Environment Variable!")
+        elif os.path.exists("firebase-key.json"):
+            # যদি ফাইল থাকে
+            cred = credentials.Certificate("firebase-key.json")
+            logger.info("✅ Firebase initialized from firebase-key.json file!")
+        else:
+            logger.error("❌ No Firebase credentials found (File or Env Var)!")
+            sys.exit(1)
+
         firebase_admin.initialize_app(cred, {
             'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/'
         })
-    logger.info("✅ Firebase Connected Successfully!")
     
-    # টেস্টিং এর জন্য একটি ডাটা পাঠানো (ডাটাবেস চেক করার জন্য)
-    db.reference('connection_test').set({'status': 'online', 'time': 'running'})
+    # কানেকশন চেক
+    db.reference('connection_test').set({'status': 'online'})
     
 except Exception as e:
     logger.error(f"❌ Firebase Critical Error: {e}")
-    # ফায়ারবেস কানেক্ট না হলে রেন্ডারে যাতে এরর দেখায়
     sys.exit(1) 
 
 # ================= ডাটাবেস ফাংশন =================
 def save_user_to_firebase(user):
     try:
         ref = db.reference(f'users/{user.id}')
-        # ইউজার যদি আগে না থাকে তবেই সেভ করবে
-        data = ref.get()
-        if data is None:
-            ref.set({
-                'id': user.id,
-                'first_name': user.first_name,
-                'username': user.username,
-                'status': 'active'
-            })
-            logger.info(f"🆕 New user saved: {user.id}")
-        else:
-            logger.info(f"✅ Old user detected: {user.id}")
+        if ref.get() is None:
+            ref.set({'id': user.id, 'first_name': user.first_name, 'username': user.username, 'status': 'active'})
+            logger.info(f"🆕 New user: {user.id}")
     except Exception as e:
         logger.error(f"❌ Error saving user: {e}")
 
@@ -63,10 +67,9 @@ def get_all_users():
         ref = db.reference('users')
         users = ref.get()
         return list(users.keys()) if users else []
-    except:
-        return []
+    except: return []
 
-# ================= ওয়েব সার্ভার (Render Port Binding) =================
+# ================= ওয়েব সার্ভার =================
 app = Flask(__name__)
 @app.route('/')
 def home(): return "Bot is Online"
@@ -85,14 +88,12 @@ CHANNEL_INVITE_LINK = "https://t.me/+3U0nMzWs4Aw0YjFl"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
 WEBAPP_URL = "https://1xbet-melbet-apple.unaux.com/"
 
-# Images
 IMG_START = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
 IMG_LANG = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
 IMG_CHOOSE_PLATFORM = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a5daa131c74.png"
 IMG_REGISTRATION = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a5daa131c74.png"
 FINAL_IMAGE_URL = "https://i.ibb.co.com/vxfM0vv5/file-00000000f15071fa8c883abb1421fa69.png"
 
-# TEXTS (বাংলা ও ইংরেজি)
 TEXTS = {
     'en': {
         'choose_platform_caption': "🎮 <b>CHOOSE YOUR PLATFORM</b>",
@@ -127,7 +128,7 @@ TEXTS = {
 CHECK_JOIN, SELECT_LANGUAGE, CHOOSE_PLATFORM, WAITING_FOR_ID = range(4)
 ADMIN_GET_CONTENT, ADMIN_CONFIRM = range(10, 12)
 
-# ================= বটের মূল কাজ =================
+# ================= বটের মূল কাজ (Handlers) =================
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID, user_id=update.effective_user.id)
@@ -142,15 +143,13 @@ async def safe_send_photo(context, chat_id, photo, caption=None, reply_markup=No
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    save_user_to_firebase(user) # ডাটাবেসে সেভ হবে
+    save_user_to_firebase(user)
     context.user_data.clear()
-    
     if not await check_membership(update, context):
         keyboard = [[InlineKeyboardButton("📢 Join Channel", url=CHANNEL_INVITE_LINK)],
                     [InlineKeyboardButton("✅ I Have Joined", callback_data='check_join_status')]]
         await safe_send_photo(context, update.effective_chat.id, IMG_START, f"👋 Hello {user.first_name}!\nJoin channel to use this bot.", InlineKeyboardMarkup(keyboard))
         return CHECK_JOIN
-    
     await show_language_menu(update, context)
     return SELECT_LANGUAGE
 
@@ -218,8 +217,6 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not uid.isdigit() or len(uid) < 9:
         await update.message.reply_text(t['error_digit'])
         return WAITING_FOR_ID
-    
-    platform = context.user_data.get('chosen_platform', '1XBET')
     keyboard = [[InlineKeyboardButton(t['btn_open_hack'], web_app=WebAppInfo(url=WEBAPP_URL))],
                 [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]]
     await safe_send_photo(context, update.effective_chat.id, FINAL_IMAGE_URL, t['success_caption'].format(uid=uid), InlineKeyboardMarkup(keyboard))
@@ -233,7 +230,7 @@ async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['bc_msg'] = update.message
-    await update.message.reply_text("Confirm? Type /send to broadcast.")
+    await update.message.reply_text("Confirm? Type /send")
     return ADMIN_CONFIRM
 
 async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
