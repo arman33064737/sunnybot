@@ -43,20 +43,24 @@ else:
 
 # ================= ডাটাবেস ফাংশন =================
 def save_user_to_firebase(user):
-    if not HAS_FIREBASE: return
+    if not HAS_FIREBASE: 
+        logger.error("❌ ফায়ারবেস লাইব্রেরি নেই, তাই ডাটা সেভ হচ্ছে না!")
+        return
     try:
         ref = db.reference(f'users/{user.id}')
+        # ইউজার যদি আগে থেকেই থাকে তবে নতুন করে সেভ করার দরকার নেই
         if not ref.get():
-            ref.set({'id': user.id, 'first_name': user.first_name, 'username': user.username})
-    except: pass
-
-def get_all_users():
-    if not HAS_FIREBASE: return []
-    try:
-        ref = db.reference('users')
-        users = ref.get()
-        return list(users.keys()) if users else []
-    except: return []
+            ref.set({
+                'id': user.id,
+                'first_name': user.first_name,
+                'username': user.username,
+                'status': 'active'
+            })
+            logger.info(f"✅ ডাটাবেসে নতুন ইউজার সেভ হয়েছে: {user.id}")
+        else:
+            logger.info(f"ℹ️ ইউজার {user.id} আগে থেকেই ডাটাবেসে আছে।")
+    except Exception as e:
+        logger.error(f"❌ ফায়ারবেসে ডাটা সেভ করতে সমস্যা: {e}")
 
 # ================= সার্ভার =================
 app = Flask(__name__)
