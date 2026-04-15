@@ -79,8 +79,8 @@ def run_flask():
     app.run(host='0.0.0.0', port=port)
 
 # ================= বটের কনফিগারেশন =================
-BOT_TOKEN = "8511299158:AAFXkGzhz5Li22MXmXl1wThQLaSGp0om2Lc"
-ADMIN_ID = 7406442919  
+BOT_TOKEN = "8638577238:AAGmHqBMuaTw-KJi7rg7w2GfJwAooJdxMYY"
+ADMIN_ID = 1146186608  
 REQUIRED_CHANNEL_ID = "-1001481593780"
 PROMO_CODES = {"1XBET": "BLACK696", "MELBET": "BETBD666"}
 LINK_REGISTRATION = "https://bit.ly/BLACK220" 
