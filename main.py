@@ -25,27 +25,23 @@ logger = logging.getLogger(__name__)
 # ================= ফায়ারবেস কানেকশন =================
 try:
     if not firebase_admin._apps:
-        # রেন্ডার বা এনভায়রনমেন্ট ভেরিয়েবল থেকে ক্রেডেনশিয়াল নেওয়ার চেষ্টা
         firebase_json = os.environ.get("FIREBASE_JSON")
         
         if firebase_json:
-            # যদি এনভায়রনমেন্ট ভেরিয়েবল সেট করা থাকে
             cred_dict = json.loads(firebase_json)
             cred = credentials.Certificate(cred_dict)
             logger.info("✅ Firebase initialized from Environment Variable!")
         elif os.path.exists("firebase-key.json"):
-            # যদি ফাইল থাকে
             cred = credentials.Certificate("firebase-key.json")
             logger.info("✅ Firebase initialized from firebase-key.json file!")
         else:
-            logger.error("❌ No Firebase credentials found (File or Env Var)!")
+            logger.error("❌ No Firebase credentials found!")
             sys.exit(1)
 
         firebase_admin.initialize_app(cred, {
             'databaseURL': 'https://telegram-60f96-default-rtdb.firebaseio.com/'
         })
     
-    # কানেকশন চেক
     db.reference('connection_test').set({'status': 'online'})
     
 except Exception as e:
@@ -58,7 +54,6 @@ def save_user_to_firebase(user):
         ref = db.reference(f'users/{user.id}')
         if ref.get() is None:
             ref.set({'id': user.id, 'first_name': user.first_name, 'username': user.username, 'status': 'active'})
-            logger.info(f"🆕 New user: {user.id}")
     except Exception as e:
         logger.error(f"❌ Error saving user: {e}")
 
@@ -86,7 +81,10 @@ PROMO_CODES = {"1XBET": "BLACK696", "MELBET": "BETBD666"}
 LINK_REGISTRATION = "https://bit.ly/BLACK220" 
 CHANNEL_INVITE_LINK = "https://t.me/+3U0nMzWs4Aw0YjFl"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
-WEBAPP_URL = "https://1xbet-melbet-apple.unaux.com/"
+
+# --- নতুন ওয়েব অ্যাপ লিংক সমূহ ---
+APPLE_HACK_URL = "https://1xbet-melbet-apple.unaux.com/"
+THIMBLES_HACK_URL = "https://thimbles-melbet.netlify.app/"
 
 IMG_START = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
 IMG_LANG = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
@@ -106,7 +104,8 @@ TEXTS = {
         'ask_id': "📩 <b>SEND YOUR NEW ID</b>",
         'error_digit': "❌ Invalid ID.",
         'success_caption': "✅ <b>VERIFIED!</b>\n🆔 ID: <code>{uid}</code>",
-        'btn_open_hack': "🍎 OPEN HACK",
+        'btn_apple_hack': "🍎 APPLE HACK",
+        'btn_thimbles_hack': "🎲 THIMBLES HACK",
         'btn_contact': "👨‍💻 Admin"
     },
     'bn': {
@@ -120,7 +119,8 @@ TEXTS = {
         'ask_id': "📩 <b>আপনার আইডি পাঠান</b>",
         'error_digit': "❌ ভুল আইডি।",
         'success_caption': "✅ <b>ভেরিফাইড সফল!</b>\n🆔 ID: <code>{uid}</code>",
-        'btn_open_hack': "🍎 হ্যাক চালু করুন",
+        'btn_apple_hack': "🍎 অ্যাপেল হ্যাক",
+        'btn_thimbles_hack': "🎲 থাম্বনেল হ্যাক",
         'btn_contact': "👨‍💻 এডমিন"
     }
 }
@@ -128,7 +128,8 @@ TEXTS = {
 CHECK_JOIN, SELECT_LANGUAGE, CHOOSE_PLATFORM, WAITING_FOR_ID = range(4)
 ADMIN_GET_CONTENT, ADMIN_CONFIRM = range(10, 12)
 
-# ================= বটের মূল কাজ (Handlers) =================
+# ================= হ্যান্ডলার ফাংশনস =================
+
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID, user_id=update.effective_user.id)
@@ -217,8 +218,14 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not uid.isdigit() or len(uid) < 9:
         await update.message.reply_text(t['error_digit'])
         return WAITING_FOR_ID
-    keyboard = [[InlineKeyboardButton(t['btn_open_hack'], web_app=WebAppInfo(url=WEBAPP_URL))],
-                [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]]
+    
+    # --- এখানে বাটনগুলো আপডেট করা হয়েছে ---
+    keyboard = [
+        [InlineKeyboardButton(t['btn_apple_hack'], web_app=WebAppInfo(url=APPLE_HACK_URL))],
+        [InlineKeyboardButton(t['btn_thimbles_hack'], web_app=WebAppInfo(url=THIMBLES_HACK_URL))],
+        [InlineKeyboardButton(t['btn_contact'], url=ADMIN_USER_LINK)]
+    ]
+    
     await safe_send_photo(context, update.effective_chat.id, FINAL_IMAGE_URL, t['success_caption'].format(uid=uid), InlineKeyboardMarkup(keyboard))
     return ConversationHandler.END
 
@@ -247,7 +254,7 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Finished! Sent to {count} users.")
     return ConversationHandler.END
 
-# ================= মেইন ফাংশন =================
+# ================= মেইন রানার =================
 if __name__ == '__main__':
     Thread(target=run_flask, daemon=True).start()
     application = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -278,5 +285,5 @@ if __name__ == '__main__':
     
     application.add_handler(user_conv)
     application.add_handler(admin_conv)
-    print("Bot is starting...")
+    print("Bot is starting with dual Hack options...")
     application.run_polling()
