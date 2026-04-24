@@ -243,15 +243,26 @@ async def admin_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_ids = get_all_users()
     msg = context.user_data['bc_msg']
-    count = 0
-    await update.message.reply_text(f"🚀 Sending to {len(user_ids)} users...")
+    
+    success_count = 0
+    fail_count = 0
+    
+    # ব্রডকাস্ট শুরুর মেসেজ
+    await update.message.reply_text("ব্রডকাস্ট শুরু হয়েছে, দয়া করে অপেক্ষা করুন...")
+    
     for uid in user_ids:
         try:
-            await context.bot.copy_message(chat_id=uid, from_chat_id=msg.chat_id, message_id=msg.message_id)
-            count += 1
-            await asyncio.sleep(0.05)
-        except: pass
-    await update.message.reply_text(f"✅ Finished! Sent to {count} users.")
+            # copy_message এর বদলে forward_message ব্যবহার করা হয়েছে
+            await context.bot.forward_message(chat_id=uid, from_chat_id=msg.chat_id, message_id=msg.message_id)
+            success_count += 1
+            await asyncio.sleep(0.05) # বটের সেফটির জন্য স্লিপ টাইম
+        except Exception as e:
+            fail_count += 1
+            
+    # ব্রডকাস্ট শেষের মেসেজ
+    final_text = f"ব্রডকাস্ট সম্পন্ন হয়েছে!\nসফলভাবে পাঠানো হয়েছে: {success_count} জনকে\nব্যর্থ হয়েছে: {fail_count} জনের কাছে।"
+    await update.message.reply_text(final_text)
+    
     return ConversationHandler.END
 
 # ================= মেইন রানার =================
