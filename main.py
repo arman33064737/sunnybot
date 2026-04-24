@@ -219,7 +219,6 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t['error_digit'])
         return WAITING_FOR_ID
     
-    # --- এখানে বাটনগুলো আপডেট করা হয়েছে ---
     keyboard = [
         [InlineKeyboardButton(t['btn_apple_hack'], web_app=WebAppInfo(url=APPLE_HACK_URL))],
         [InlineKeyboardButton(t['btn_thimbles_hack'], web_app=WebAppInfo(url=THIMBLES_HACK_URL))],
@@ -229,41 +228,56 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_send_photo(context, update.effective_chat.id, FINAL_IMAGE_URL, t['success_caption'].format(uid=uid), InlineKeyboardMarkup(keyboard))
     return ConversationHandler.END
 
-# ================= অ্যাডমিন সেকশন =================
+# ================= অ্যাডমিন সেকশন (আপডেটেড) =================
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
-    await update.message.reply_text("👑 Admin: Send me any message to broadcast.")
+    await update.message.reply_text("👑 Admin: ব্রডকাস্ট করার জন্য যেকোনো মেসেজ লিখে পাঠান অথবা ফরওয়ার্ড করুন।")
     return ADMIN_GET_CONTENT
 
 async def admin_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['bc_msg'] = update.message
-    await update.message.reply_text("Confirm? Type /send")
+    
+    # বাটন যুক্ত করা হলো যাতে /send টাইপ না করতে হয়
+    keyboard = [
+        [InlineKeyboardButton("✅ ব্রডকাস্ট শুরু করুন", callback_data='bc_confirm')],
+        [InlineKeyboardButton("❌ বাতিল করুন", callback_data='bc_cancel')]
+    ]
+    await update.message.reply_text("আপনার মেসেজটি রিসিভ হয়েছে। আপনি কি এটি সবার কাছে পাঠাতে চান?", reply_markup=InlineKeyboardMarkup(keyboard))
     return ADMIN_CONFIRM
 
-async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_ids = get_all_users()
-    msg = context.user_data['bc_msg']
+async def admin_broadcast_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     
-    success_count = 0
-    fail_count = 0
-    
-    # ব্রডকাস্ট শুরুর মেসেজ
-    await update.message.reply_text("ব্রডকাস্ট শুরু হয়েছে, দয়া করে অপেক্ষা করুন...")
-    
-    for uid in user_ids:
-        try:
-            # copy_message এর বদলে forward_message ব্যবহার করা হয়েছে
-            await context.bot.forward_message(chat_id=uid, from_chat_id=msg.chat_id, message_id=msg.message_id)
-            success_count += 1
-            await asyncio.sleep(0.05) # বটের সেফটির জন্য স্লিপ টাইম
-        except Exception as e:
-            fail_count += 1
+    if query.data == 'bc_cancel':
+        await query.edit_message_text("❌ ব্রডকাস্ট বাতিল করা হয়েছে।")
+        return ConversationHandler.END
+        
+    if query.data == 'bc_confirm':
+        await query.edit_message_text("🚀 ব্রডকাস্ট শুরু হয়েছে, দয়া করে অপেক্ষা করুন...")
+        user_ids = get_all_users()
+        msg = context.user_data.get('bc_msg')
+        
+        success_count = 0
+        fail_count = 0
+        
+        for uid in user_ids:
+            try:
+                # প্রথমে ফরওয়ার্ড করার চেষ্টা করবে (প্রিমিয়াম ইমোজির জন্য)
+                await context.bot.forward_message(chat_id=uid, from_chat_id=msg.chat_id, message_id=msg.message_id)
+                success_count += 1
+            except Exception as e:
+                # যদি প্রাইভেসি রুলের কারণে ফরওয়ার্ড ফেইল করে, তাহলে কপি করে পাঠাবে
+                try:
+                    await context.bot.copy_message(chat_id=uid, from_chat_id=msg.chat_id, message_id=msg.message_id)
+                    success_count += 1
+                except:
+                    fail_count += 1
+            await asyncio.sleep(0.05)
             
-    # ব্রডকাস্ট শেষের মেসেজ
-    final_text = f"ব্রডকাস্ট সম্পন্ন হয়েছে!\nসফলভাবে পাঠানো হয়েছে: {success_count} জনকে\nব্যর্থ হয়েছে: {fail_count} জনের কাছে।"
-    await update.message.reply_text(final_text)
-    
-    return ConversationHandler.END
+        final_text = f"✅ ব্রডকাস্ট সম্পন্ন হয়েছে!\nসফলভাবে পাঠানো হয়েছে: {success_count} জনকে\nব্যর্থ হয়েছে: {fail_count} জনের কাছে।"
+        await query.message.reply_text(final_text)
+        return ConversationHandler.END
 
 # ================= মেইন রানার =================
 if __name__ == '__main__':
@@ -285,16 +299,17 @@ if __name__ == '__main__':
         allow_reentry=True
     )
     
+    # অ্যাডমিন কনভার্সেশন হ্যান্ডলার আপডেট করা হয়েছে
     admin_conv = ConversationHandler(
         entry_points=[CommandHandler('admin', admin_start)],
         states={
-            ADMIN_GET_CONTENT: [MessageHandler(filters.ALL, admin_get_content)],
-            ADMIN_CONFIRM: [CommandHandler('send', admin_broadcast)]
+            ADMIN_GET_CONTENT: [MessageHandler(filters.ALL & ~filters.COMMAND, admin_get_content)],
+            ADMIN_CONFIRM: [CallbackQueryHandler(admin_broadcast_action, pattern='^bc_')]
         },
         fallbacks=[CommandHandler('start', start)]
     )
     
     application.add_handler(user_conv)
     application.add_handler(admin_conv)
-    print("Bot is starting with dual Hack options...")
+    print("Bot is starting with dual Hack options and Auto-Fallback Broadcast...")
     application.run_polling()
