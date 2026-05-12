@@ -83,16 +83,21 @@ def run_flask():
 
 BOT_TOKEN = "8638577238:AAGmHqBMuaTw-KJi7rg7w2GfJwAooJdxMYY"
 ADMIN_ID = 1146186608
-REQUIRED_CHANNEL_ID = "-1001481593780"
+
+# <-- এখানে দুটি চ্যানেল সেট করা হয়েছে -->
+REQUIRED_CHANNELS = [
+    {"id": "-1001481593780", "link": "https://t.me/+3U0nMzWs4Aw0YjFl", "name": "📢 Join Channel 1"},
+    {"id": "-1003974496364", "link": "https://t.me/+WeqyzLHAMWhjMmU1", "name": "📢 Join Channel 2"}
+]
+
 PROMO_CODES = {"1XBET": "BLACK696", "MELBET": "BETBD666"}
 LINK_REGISTRATION = "https://bit.ly/BLACK220"
-CHANNEL_INVITE_LINK = "https://t.me/+3U0nMzWs4Aw0YjFl"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
 
 # --- নতুন ওয়েব অ্যাপ লিংক সমূহ ---
 APPLE_HACK_URL = "https://1xbet-melbet-apple.unaux.com/"
 THIMBLES_HACK_URL = "https://thimbles-melbet.netlify.app/"
-CRASH_SIGNAL_URL = "https://crasgsignaldog.netlify.app/" # <-- নতুন লিংক যোগ করা হয়েছে
+CRASH_SIGNAL_URL = "https://crasgsignaldog.netlify.app/"
 
 IMG_START = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
 IMG_LANG = "https://i.ibb.co.com/23VVWgSS/file-00000000d21472088a8b84f9b1faa902.png"
@@ -100,7 +105,6 @@ IMG_CHOOSE_PLATFORM = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a
 IMG_REGISTRATION = "https://i.ibb.co.com/NdFDsT4P/file-000000005308720880754a5daa131c74.png"
 FINAL_IMAGE_URL = "https://i.ibb.co.com/vxfM0vv5/file-00000000f15071fa8c883abb1421fa69.png"
 
-# <-- নতুন বাটনের টেক্সট যোগ করা হয়েছে -->
 TEXTS = {
     'en': {
         'choose_platform_caption': "🎮 CHOOSE YOUR PLATFORM",
@@ -142,9 +146,13 @@ ADMIN_GET_CONTENT, ADMIN_CONFIRM = range(10, 12)
 # ================= হ্যান্ডলার ফাংশনস =================
 
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # <-- দুটি চ্যানেলই চেক করার লজিক -->
     try:
-        member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL_ID, user_id=update.effective_user.id)
-        return member.status in ['creator', 'administrator', 'member']
+        for channel in REQUIRED_CHANNELS:
+            member = await context.bot.get_chat_member(chat_id=channel["id"], user_id=update.effective_user.id)
+            if member.status not in ['creator', 'administrator', 'member']:
+                return False
+        return True
     except:
         return False
 
@@ -160,11 +168,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     
     if not await check_membership(update, context):
-        keyboard = [
-            [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_INVITE_LINK)],
-            [InlineKeyboardButton("✅ I Have Joined", callback_data='check_join_status')]
-        ]
-        await safe_send_photo(context, update.effective_chat.id, IMG_START, f"👋 Hello {user.first_name}!\nJoin channel to use this bot.", InlineKeyboardMarkup(keyboard))
+        # <-- দুটি চ্যানেলের বাটন তৈরি করা হচ্ছে -->
+        keyboard = []
+        for channel in REQUIRED_CHANNELS:
+            keyboard.append([InlineKeyboardButton(channel["name"], url=channel["link"])])
+            
+        keyboard.append([InlineKeyboardButton("✅ I Have Joined", callback_data='check_join_status')])
+        
+        await safe_send_photo(context, update.effective_chat.id, IMG_START, f"👋 Hello {user.first_name}!\nJoin all channels to use this bot.", InlineKeyboardMarkup(keyboard))
         return CHECK_JOIN
         
     await show_language_menu(update, context)
@@ -178,7 +189,7 @@ async def check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await show_language_menu(update, context)
         return SELECT_LANGUAGE
     else:
-        await query.message.reply_text("❌ Join first!")
+        await query.message.reply_text("❌ Join both channels first!")
         return CHECK_JOIN
 
 async def show_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,7 +262,6 @@ async def receive_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t['error_digit'])
         return WAITING_FOR_ID
 
-    # <-- এখানে ক্র্যাশ সিগন্যালের বাটন অ্যাড করা হয়েছে -->
     keyboard = [
         [InlineKeyboardButton(t['btn_apple_hack'], web_app=WebAppInfo(url=APPLE_HACK_URL))],
         [InlineKeyboardButton(t['btn_thimbles_hack'], web_app=WebAppInfo(url=THIMBLES_HACK_URL))],
@@ -344,5 +354,5 @@ if __name__ == '__main__':
 
     application.add_handler(user_conv)
     application.add_handler(admin_conv)
-    print("Bot is starting with 3 WebApp Hack options and Auto-Fallback Broadcast...")
+    print("Bot is starting with 2 Channels requirement...")
     application.run_polling()
