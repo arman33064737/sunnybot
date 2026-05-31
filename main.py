@@ -91,7 +91,7 @@ REQUIRED_CHANNELS = [
 ]
 
 PROMO_CODES = {"1XBET": "BLACK696", "MELBET": "BETBD666"}
-LINK_REGISTRATION = "https://bit.ly/BLACK220"
+LINK_REGISTRATION = "https://1xlite-08668.world/en"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
 
 # --- নতুন ওয়েব অ্যাপ লিংক সমূহ ---
