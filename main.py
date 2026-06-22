@@ -97,7 +97,7 @@ ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
 # --- নতুন ওয়েব অ্যাপ লিংক সমূহ ---
 APPLE_HACK_URL = "https://1xbet-melbet-apple.unaux.com/"
 THIMBLES_HACK_URL = "https://thimbles-melbet.netlify.app/"
-CRASH_SIGNAL_URL = "https://crasgsignaldog.netlify.app/"
+CRASH_SIGNAL_URL = "https://sunnybro.unaux.com/ss.html"
 
 IMG_START = "https://i.ibb.co/LzJF0GGz/file-00000000ee647208a867f87bc931da8c.png"
 IMG_LANG = "https://i.ibb.co/LzJF0GGz/file-00000000ee647208a867f87bc931da8c.png"
