@@ -95,7 +95,7 @@ LINK_REGISTRATION = "https://1xbet-bangladesh.mobi"
 ADMIN_USER_LINK = "https://t.me/SUNNY_BRO1"
 
 # --- নতুন ওয়েব অ্যাপ লিংক সমূহ ---
-APPLE_HACK_URL = "https://1xbet-melbet-apple.unaux.com/"
+APPLE_HACK_URL = "https://1xbetmelbetapple.vercel.app/"
 THIMBLES_HACK_URL = "https://thimbles-melbet.netlify.app/"
 CRASH_SIGNAL_URL = "https://sunnybro.unaux.com/ss.html"
 
