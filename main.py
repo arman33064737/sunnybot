@@ -87,7 +87,7 @@ ADMIN_ID = 1146186608
 # <-- এখানে দুটি চ্যানেল সেট করা হয়েছে -->
 REQUIRED_CHANNELS = [
     {"id": "-1001481593780", "link": "https://t.me/+3U0nMzWs4Aw0YjFl", "name": "📢 Join Channel 1"},
-    {"id": "-1003974496364", "link": "https://t.me/+WeqyzLHAMWhjMmU1", "name": "📢 Join Channel 2"}
+    {"id": "-1003974496364", "link": "https://t.me/+sS-QizZPn4BmMDg1", "name": "📢 Join Channel 2"}
 ]
 
 PROMO_CODES = {"1XBET": "BLACK696", "MELBET": "BETBD666"}
