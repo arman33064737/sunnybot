@@ -81,7 +81,7 @@ def run_flask():
 
 # ================= বটের কনফিগারেশন =================
 
-BOT_TOKEN = "8638577238:AAGmHqBMuaTw-KJi7rg7w2GfJwAooJdxMYY"
+BOT_TOKEN = "8638577238:AAGtMg9D6aFfDS0D_9RpAPFQ2TCGNRCPRdE"
 ADMIN_ID = 1146186608
 
 # <-- এখানে আপনার নতুন চ্যানেল আপডেট করা হয়েছে -->
